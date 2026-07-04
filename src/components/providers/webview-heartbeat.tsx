@@ -8,6 +8,7 @@ export function WebviewHeartbeat() {
     if (!monitorUrl) return;
 
     const heartbeatUrl = `${monitorUrl}/heartbeat`;
+    const closingUrl = `${monitorUrl}/closing`;
 
     function ping() {
       fetch(heartbeatUrl, {
@@ -19,12 +20,20 @@ export function WebviewHeartbeat() {
       });
     }
 
+    function notifyClosing() {
+      navigator.sendBeacon?.(closingUrl);
+    }
+
     ping();
     const interval = window.setInterval(ping, 2000);
+    window.addEventListener("pagehide", notifyClosing);
+    window.addEventListener("beforeunload", notifyClosing);
 
     return () => {
       window.clearInterval(interval);
-      navigator.sendBeacon?.(heartbeatUrl);
+      window.removeEventListener("pagehide", notifyClosing);
+      window.removeEventListener("beforeunload", notifyClosing);
+      notifyClosing();
     };
   }, []);
 

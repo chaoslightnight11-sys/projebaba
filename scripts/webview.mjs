@@ -6,13 +6,15 @@ const appPort = Number(process.env.CLINICNOVA_PORT ?? 3000);
 const appHost = "127.0.0.1";
 const publicHost = "localhost";
 const appUrl = process.env.CLINICNOVA_WEBVIEW_URL ?? `http://${publicHost}:${appPort}/login`;
-const staleAfterMs = Number(process.env.CLINICNOVA_WEBVIEW_STALE_MS ?? 30000);
+const staleAfterMs = Number(process.env.CLINICNOVA_WEBVIEW_STALE_MS ?? 120000);
 const noTabTimeoutMs = Number(process.env.CLINICNOVA_WEBVIEW_NO_TAB_TIMEOUT_MS ?? 120000);
+const closeGraceMs = Number(process.env.CLINICNOVA_WEBVIEW_CLOSE_GRACE_MS ?? 4500);
 
 let nextProcess = null;
 let lastHeartbeat = 0;
 let hasSeenHeartbeat = false;
 let shuttingDown = false;
+let pendingCloseTimer = null;
 
 function killPort(port) {
   try {
@@ -82,6 +84,11 @@ function shutdown(reason) {
   shuttingDown = true;
   console.log(`[webview] ${reason}`);
 
+  if (pendingCloseTimer) {
+    clearTimeout(pendingCloseTimer);
+    pendingCloseTimer = null;
+  }
+
   if (nextProcess && !nextProcess.killed) {
     nextProcess.kill("SIGTERM");
     setTimeout(() => {
@@ -108,10 +115,29 @@ const monitor = http.createServer((request, response) => {
   }
 
   if (request.url?.startsWith("/heartbeat")) {
+    if (pendingCloseTimer) {
+      clearTimeout(pendingCloseTimer);
+      pendingCloseTimer = null;
+    }
     lastHeartbeat = Date.now();
     hasSeenHeartbeat = true;
     response.writeHead(204);
     response.end();
+    return;
+  }
+
+  if (request.url?.startsWith("/closing")) {
+    response.writeHead(204);
+    response.end();
+
+    if (!hasSeenHeartbeat || pendingCloseTimer) return;
+
+    pendingCloseTimer = setTimeout(() => {
+      pendingCloseTimer = null;
+      if (!shuttingDown && Date.now() - lastHeartbeat >= closeGraceMs) {
+        shutdown("ClinicNova penceresi kapandı, arka plan kodu kapatılıyor.");
+      }
+    }, closeGraceMs);
     return;
   }
 
