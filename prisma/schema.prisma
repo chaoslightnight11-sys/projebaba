@@ -472,6 +472,7 @@ model Treatment {
   doctor          User            @relation("DoctorTreatments", fields: [doctorId], references: [id], onDelete: Restrict)
   organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch          Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  payments        Payment[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -484,15 +485,21 @@ model Treatment {
 model Payment {
   id              String        @id @default(cuid())
   patientId       String?
+  treatmentId     String?
   type            PaymentType
   amount          Decimal       @db.Decimal(12, 2)
+  listAmount      Decimal?      @db.Decimal(12, 2)
+  discountAmount  Decimal?      @db.Decimal(12, 2)
+  referralSource  String?
   method          PaymentMethod
   description     String?
   status          PaymentStatus @default(PENDING)
   paidAt          DateTime      @default(now())
+  dueDate         DateTime?
   organizationId  String
   branchId        String
   patient         Patient?      @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  treatment       Treatment?    @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
   organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch          Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   invoices        Invoice[]

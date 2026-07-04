@@ -865,6 +865,33 @@ const additionalEnglishPhraseTranslations: Record<string, string> = {
   "Paket seçin.": "Select a package.",
   "Plan ekle": "Add plan",
   "Plan yok": "No plan",
+  "Tahsil edilen": "Collected",
+  "Kalan tahsilat": "Outstanding balance",
+  "Toplam indirim": "Total discount",
+  "Yaklaşan vade": "Upcoming due",
+  "Yaklaşan tahsilatlar": "Upcoming collections",
+  "Bekleyen tahsilat yok.": "No pending collections.",
+  "İşlem / tedavi": "Procedure / treatment",
+  "İşlem seçilmedi": "No procedure selected",
+  "Liste fiyatı": "List price",
+  "Son tutar": "Final amount",
+  "Referans": "Referral",
+  "Referans / bağlantı": "Referral / connection",
+  "Örn. Dr. Emir Aydın, Google, hasta tavsiyesi": "E.g. Dr. Emir Aydın, Google, patient referral",
+  "Vade tarihi": "Due date",
+  "Bekleyen tahsilatın planlanan tarihi.": "Planned date of the pending collection.",
+  "vade belirtilmedi": "no due date set",
+  "Gecikti": "Overdue",
+  "Bildirimler": "Notifications",
+  "Yeni bildirim yok.": "No new notifications.",
+  "Tümünü okundu işaretle": "Mark all as read",
+  "Stok azaldi": "Low stock",
+  "Bekleyen tahsilat": "Pending collection",
+  "Memnuniyet skoru dustu": "Satisfaction score dropped",
+  "Dusuk puanli anketleri recall listesine alin.": "Add low-scoring surveys to the recall list.",
+  "adet": "pcs",
+  "kutu": "boxes",
+  "paket": "packs",
   "Randevu gelmeme": "No-show",
   "Randevu, hasta, tedavi, finans, stok, personel ve iletişim süreçlerinizi modern bir bulut sistemiyle merkezileştirin.": "Centralize appointment, patient, treatment, finance, stock, staff and communication workflows with a modern cloud system.",
   "Satış temsilcisi sahiplenir": "Sales representative takes ownership",
@@ -1026,7 +1053,11 @@ const englishPatternTranslations: Array<[RegExp, (...matches: string[]) => strin
   [/^(.+) peşinat · (\d+) taksit · İlk: (.+)$/, (_match, down, count, first) => `${down} down payment · ${count} installments · First: ${first}`],
   [/^(\d+) taksit · İlk: (.+)$/, (_match, count, first) => `${count} installments · First: ${first}`],
   [/^Peşinat: (.+)$/, (_match, amount) => `Down payment: ${amount}`],
-  [/^(\d+)\. taksit: (.+)$/, (_match, number, rest) => `Installment ${number}: ${rest}`]
+  [/^(\d+)\. taksit: (.+)$/, (_match, number, rest) => `Installment ${number}: ${rest}`],
+  [/^vade: (.+)$/, (_match, date) => `due: ${date}`],
+  [/^(.+) − (.+) indirim →$/, (_match, list, discount) => `${list} − ${discount} discount →`],
+  [/^(.+) (\d+) (adet|kutu|paket) seviyesinde\.$/, (_match, name, quantity, unit) => `${name} is at ${quantity} ${translateText(unit, "en")}.`],
+  [/^([\d.,]+) TL odeme bekliyor\.$/, (_match, amount) => `${amount} TL payment is pending.`]
 ];
 
 const turkishPatternTranslations: Array<[RegExp, (...matches: string[]) => string]> = [
@@ -1040,7 +1071,11 @@ const turkishPatternTranslations: Array<[RegExp, (...matches: string[]) => strin
   [/^(.+) down payment · (\d+) installments · First: (.+)$/, (_match, down, count, first) => `${down} peşinat · ${count} taksit · İlk: ${first}`],
   [/^(\d+) installments · First: (.+)$/, (_match, count, first) => `${count} taksit · İlk: ${first}`],
   [/^Down payment: (.+)$/, (_match, amount) => `Peşinat: ${amount}`],
-  [/^Installment (\d+): (.+)$/, (_match, number, rest) => `${number}. taksit: ${rest}`]
+  [/^Installment (\d+): (.+)$/, (_match, number, rest) => `${number}. taksit: ${rest}`],
+  [/^due: (.+)$/, (_match, date) => `vade: ${date}`],
+  [/^(.+) − (.+) discount →$/, (_match, list, discount) => `${list} − ${discount} indirim →`],
+  [/^(.+) is at (\d+) (pcs|boxes|packs)\.$/, (_match, name, quantity, unit) => `${name} ${quantity} ${translateText(unit, "tr")} seviyesinde.`],
+  [/^([\d.,]+) TL payment is pending\.$/, (_match, amount) => `${amount} TL odeme bekliyor.`]
 ];
 
 export function translateText(value: string, locale: Locale) {

@@ -168,20 +168,36 @@ const treatments = Array.from({ length: 18 }).map((_, index) => ({
   updatedAt: now
 }));
 
-const payments = Array.from({ length: 26 }).map((_, index) => ({
-  id: id("payment", index + 1),
-  patientId: index % 6 === 0 ? null : patients[index % patients.length].id,
-  type: index % 8 === 0 ? PaymentType.EXPENSE : PaymentType.INCOME,
-  amount: index % 8 === 0 ? 1500 + index * 80 : 850 + index * 210,
-  method: [PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.TRANSFER, PaymentMethod.ONLINE][index % 4],
-  description: index % 8 === 0 ? "Malzeme gideri" : "Tedavi tahsilatı",
-  status: [PaymentStatus.PAID, PaymentStatus.PENDING, PaymentStatus.CANCELLED][index % 3],
-  paidAt: days(-index),
-  organizationId: organization.id,
-  branchId: patients[index % patients.length].branchId,
-  createdAt: days(-index),
-  updatedAt: now
-}));
+const referralSources = ["Dr. Emir Aydın referansı", "Google araması", "Instagram", "Hasta tavsiyesi: Ayşe Yılmaz", null, "Web sitesi formu"];
+
+const payments = Array.from({ length: 26 }).map((_, index) => {
+  const isExpense = index % 8 === 0;
+  const treatment = !isExpense && index % 6 !== 0 ? treatments[index % treatments.length] : null;
+  const listAmount = isExpense ? null : treatment ? treatment.fee : 850 + index * 210;
+  const discountAmount = !isExpense && index % 3 === 1 && listAmount ? Math.round(Number(listAmount) * 0.1) : null;
+  const amount = isExpense ? 1500 + index * 80 : Math.max(Number(listAmount ?? 0) - Number(discountAmount ?? 0), 0);
+  const status = [PaymentStatus.PAID, PaymentStatus.PENDING, PaymentStatus.CANCELLED][index % 3];
+
+  return {
+    id: id("payment", index + 1),
+    patientId: treatment ? treatment.patientId : index % 6 === 0 ? null : patients[index % patients.length].id,
+    treatmentId: treatment?.id ?? null,
+    type: isExpense ? PaymentType.EXPENSE : PaymentType.INCOME,
+    amount,
+    listAmount,
+    discountAmount,
+    referralSource: isExpense ? null : referralSources[index % referralSources.length],
+    method: [PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.TRANSFER, PaymentMethod.ONLINE][index % 4],
+    description: isExpense ? "Malzeme gideri" : "Tedavi tahsilatı",
+    status,
+    paidAt: days(-index),
+    dueDate: status === PaymentStatus.PENDING ? days(14 - index) : null,
+    organizationId: organization.id,
+    branchId: patients[index % patients.length].branchId,
+    createdAt: days(-index),
+    updatedAt: now
+  };
+});
 
 const invoices = payments.slice(0, 12).map((payment, index) => ({
   id: id("invoice", index + 1),
@@ -729,7 +745,12 @@ function richTreatmentPlan(item: any) {
 }
 
 function richPayment(item: any) {
-  return { ...item, patient: patientOf(item.patientId), branch: branchOf(item.branchId) };
+  return {
+    ...item,
+    patient: patientOf(item.patientId),
+    treatment: treatments.find((treatment) => treatment.id === item.treatmentId) ?? null,
+    branch: branchOf(item.branchId)
+  };
 }
 
 function richInvoice(item: any) {

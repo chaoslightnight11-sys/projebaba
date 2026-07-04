@@ -40,13 +40,23 @@ function shouldSkipElement(element: Element) {
   return skippedTags.has(element.tagName) || element.closest(skippedSelectors) !== null;
 }
 
+function translateElementAttributes(element: Element, locale: Locale) {
+  for (const attribute of translatedAttributes) {
+    const value = element.getAttribute(attribute);
+    if (value) applyTranslatedAttribute(element, attribute, replacePreservingWhitespace(value, locale));
+  }
+}
+
 function translateRoot(root: Node, locale: Locale) {
   if (root instanceof Element && shouldSkipElement(root)) return;
 
   if (root instanceof Element) {
-    for (const attribute of translatedAttributes) {
-      const value = root.getAttribute(attribute);
-      if (value) applyTranslatedAttribute(root, attribute, replacePreservingWhitespace(value, locale));
+    translateElementAttributes(root, locale);
+
+    // Alt elemanların attribute'ları yalnızca mutation anında değil,
+    // tam taramada da çevrilmeli; yoksa dil değişiminde eski dilde kalıyorlar.
+    for (const element of Array.from(root.querySelectorAll("[placeholder], [aria-label], [title]"))) {
+      if (!shouldSkipElement(element)) translateElementAttributes(element, locale);
     }
   }
 
@@ -74,6 +84,8 @@ function translateRoot(root: Node, locale: Locale) {
   }
 }
 
+let hasCompletedInitialPass = false;
+
 export function LocaleTextLayer({ locale }: { locale: Locale }) {
   useEffect(() => {
     let observer: MutationObserver | null = null;
@@ -83,6 +95,7 @@ export function LocaleTextLayer({ locale }: { locale: Locale }) {
     function startTranslationLayer() {
       if (cancelled) return;
 
+      hasCompletedInitialPass = true;
       translateRoot(document.body, locale);
 
       observer = new MutationObserver((mutations) => {
@@ -114,17 +127,21 @@ export function LocaleTextLayer({ locale }: { locale: Locale }) {
       });
     }
 
+    // 1200ms bekleme yalnızca ilk hydration'ı korumak için gerekli;
+    // dil değişiminde beklemek eski dildeki metinlerin ekranda kalmasına yol açıyor.
+    const startDelayMs = hasCompletedInitialPass ? 80 : 1200;
+
     const timeout = window.setTimeout(() => {
       const idleWindow = window as Window & {
         requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
       };
 
-      if (idleWindow.requestIdleCallback) {
+      if (idleWindow.requestIdleCallback && !hasCompletedInitialPass) {
         idleHandle = idleWindow.requestIdleCallback(startTranslationLayer, { timeout: 1000 });
       } else {
         startTranslationLayer();
       }
-    }, 1200);
+    }, startDelayMs);
 
     return () => {
       cancelled = true;
