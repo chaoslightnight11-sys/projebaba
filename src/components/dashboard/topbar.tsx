@@ -23,9 +23,10 @@ export function Topbar({ session, organizationName, locale = "tr" }: { session: 
   return (
     <header className="sticky top-0 z-30 flex min-h-16 items-center gap-3 border-b bg-background/92 px-4 backdrop-blur md:px-6">
       <MobileSidebar locale={locale} />
+      <LanguageToggle className="hidden shrink-0 md:inline-flex" locale={locale} label={text.language} variant="prominent" />
       <GlobalSearch locale={locale} />
       <div className="ml-auto flex items-center gap-2">
-        <LanguageToggle locale={locale} label={text.language} />
+        <LanguageToggle className="md:hidden" locale={locale} label={text.language} />
         <Button variant="outline" size="icon" aria-label={text.notifications}>
           <Bell className="h-4 w-4" />
         </Button>

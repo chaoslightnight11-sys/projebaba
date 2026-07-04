@@ -1,8 +1,9 @@
-import { Database, KeyRound, ShieldCheck, Settings } from "lucide-react";
+import { Database, KeyRound, Languages, ShieldCheck, Settings } from "lucide-react";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireSession } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
@@ -23,7 +24,14 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-6">
       <ModuleHeader icon={Settings} title="Ayarlar" description="Organization, branch, kullanıcı rolleri, audit log ve KVKK mock işlemleri." />
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-primary/25 bg-primary/5">
+          <CardHeader><CardTitle className="flex items-center gap-2"><Languages className="h-5 w-5 text-primary" />Dil Tercihi</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">Arayüz dilini hızlıca Türkçe veya İngilizce yap.</p>
+            <LanguageToggle locale={locale} label="Dil" variant="prominent" />
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader><CardTitle>Organization</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">

@@ -342,6 +342,8 @@ const englishPhraseTranslations: Record<string, string> = {
   "Takip listesi": "Recall list",
   "Doktor performansı": "Doctor performance",
   "Rezervasyon dönüşümü": "Booked conversion",
+  "Dil Tercihi": "Language Preference",
+  "Arayüz dilini hızlıca Türkçe veya İngilizce yap.": "Quickly switch the interface between Turkish and English.",
   "randevu": "appointments",
   "tedavi": "treatments",
   "Takipler": "Recalls",
