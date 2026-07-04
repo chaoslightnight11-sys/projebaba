@@ -1,0 +1,63 @@
+import { Role } from "@prisma/client";
+import { hashPassword, loginWithPassword } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+export async function authenticate(email: string, password: string) {
+  return loginWithPassword(email, password);
+}
+
+export async function registerClinic(input: {
+  clinicName: string;
+  fullName: string;
+  email: string;
+  password: string;
+}) {
+  const slug = input.clinicName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+  const passwordHash = await hashPassword(input.password);
+
+  return prisma.$transaction(async (tx) => {
+    const organization = await tx.organization.create({
+      data: {
+        name: input.clinicName,
+        slug: `${slug || "clinic"}-${Date.now()}`,
+        plan: "Baslangic"
+      }
+    });
+
+    const branch = await tx.branch.create({
+      data: {
+        name: "Merkez Klinik",
+        city: "Belirtilmedi",
+        organizationId: organization.id
+      }
+    });
+
+    const user = await tx.user.create({
+      data: {
+        name: input.fullName,
+        email: input.email.toLowerCase(),
+        passwordHash,
+        role: Role.CLINIC_OWNER,
+        organizationId: organization.id,
+        branchId: branch.id
+      }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "REGISTER",
+        module: "auth",
+        organizationId: organization.id,
+        branchId: branch.id,
+        metadata: { plan: "Baslangic" }
+      }
+    });
+
+    return { organization, branch, user };
+  });
+}
