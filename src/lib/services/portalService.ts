@@ -1,10 +1,65 @@
-import { AppointmentStatus, PaymentStatus, PaymentType, Role } from "@prisma/client";
+import { AppointmentStatus, PatientTag, PaymentStatus, PaymentType, Role } from "@prisma/client";
 import type { PatientSession } from "@/lib/patient-auth";
 import { prisma } from "@/lib/prisma";
 import { toNumber } from "@/lib/utils";
-import type { PortalAppointmentInput } from "@/lib/validations/portal";
+import type { PortalAppointmentInput, PortalHealthInput, PortalRegisterInput } from "@/lib/validations/portal";
 
 export const portalTreatmentTypes = ["Muayene", "Dolgu", "Kanal tedavisi", "İmplant", "Diş çekimi", "Protez", "Ortodonti", "Temizlik"];
+
+export function buildChronicDiseases(input: PortalHealthInput) {
+  const conditions = [
+    input.heartDisease ? "Kalp hastalığı" : null,
+    input.asthma ? "Astım" : null,
+    input.diabetes ? "Diyabet" : null,
+    input.hypertension ? "Hipertansiyon" : null,
+    input.otherConditions?.trim() || null
+  ].filter((value): value is string => Boolean(value));
+
+  return conditions.length > 0 ? conditions.join(", ") : null;
+}
+
+export async function registerPortalPatient(input: PortalRegisterInput) {
+  const { findPatientByPhone } = await import("@/lib/patient-auth");
+  const existing = await findPatientByPhone(input.phone);
+  if (existing) {
+    return { conflict: true as const, patient: existing };
+  }
+
+  const organization = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+  if (!organization) throw new Error("Organizasyon bulunamadı.");
+  const branch = await prisma.branch.findFirst({ where: { organizationId: organization.id }, orderBy: { createdAt: "asc" } });
+  if (!branch) throw new Error("Şube bulunamadı.");
+
+  const patient = await prisma.patient.create({
+    data: {
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
+      phone: input.phone.trim(),
+      email: input.email?.trim() || null,
+      birthDate: input.birthDate ? new Date(input.birthDate) : null,
+      allergies: input.allergies?.trim() || null,
+      chronicDiseases: buildChronicDiseases(input),
+      medications: input.medications?.trim() || null,
+      notes: "Hasta portalından kayıt oldu.",
+      tag: PatientTag.NEW,
+      organizationId: organization.id,
+      branchId: branch.id
+    }
+  });
+
+  return { conflict: false as const, patient };
+}
+
+export async function updatePatientHealthInfo(session: PatientSession, input: PortalHealthInput) {
+  return prisma.patient.updateMany({
+    where: { id: session.patientId, organizationId: session.organizationId },
+    data: {
+      allergies: input.allergies?.trim() || null,
+      chronicDiseases: buildChronicDiseases(input),
+      medications: input.medications?.trim() || null
+    }
+  });
+}
 
 export async function getPortalOverview(session: PatientSession) {
   const now = new Date();

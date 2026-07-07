@@ -1,13 +1,26 @@
-import { CalendarDays, CreditCard, Stethoscope, User } from "lucide-react";
+import { revalidatePath } from "next/cache";
+import { CalendarDays, CreditCard, HeartPulse, Stethoscope, User } from "lucide-react";
 import Link from "next/link";
+import { HealthQuestions } from "@/components/portal/health-questions";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { requirePatientSession } from "@/lib/patient-auth";
-import { getPortalOverview } from "@/lib/services/portalService";
+import { getPortalOverview, updatePatientHealthInfo } from "@/lib/services/portalService";
+import { portalHealthSchema } from "@/lib/validations/portal";
 import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+
+async function saveHealthInfoAction(formData: FormData) {
+  "use server";
+  const session = await requirePatientSession();
+  const parsed = portalHealthSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return;
+
+  await updatePatientHealthInfo(session, parsed.data);
+  revalidatePath("/portal");
+}
 
 export default async function PortalHomePage() {
   const session = await requirePatientSession();
@@ -102,7 +115,32 @@ export default async function PortalHomePage() {
           <CardContent className="space-y-1 text-sm">
             <p><span className="text-muted-foreground">Telefon:</span> {overview.patient.phone}</p>
             {overview.patient.email ? <p><span className="text-muted-foreground">E-posta:</span> {overview.patient.email}</p> : null}
-            {overview.patient.allergies ? <p><span className="text-muted-foreground">Alerjiler:</span> {overview.patient.allergies}</p> : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {overview.patient ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <HeartPulse className="h-4 w-4 text-primary" />
+              Sağlık Bilgilerim
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {overview.patient.chronicDiseases || overview.patient.allergies || overview.patient.medications ? (
+              <div className="space-y-1 text-sm">
+                <p><span className="text-muted-foreground">Rahatsızlıklar:</span> {overview.patient.chronicDiseases ?? "Yok"}</p>
+                <p><span className="text-muted-foreground">Alerjiler:</span> {overview.patient.allergies ?? "Yok"}</p>
+                <p><span className="text-muted-foreground">Kullanılan ilaçlar:</span> {overview.patient.medications ?? "Yok"}</p>
+              </div>
+            ) : (
+              <form action={saveHealthInfoAction} className="space-y-4">
+                <p className="text-sm text-muted-foreground">Güvenli tedavi için sağlık bilgilerinizi doldurun. Bu bilgiler hesabınızda saklanır ve kliniğinizle paylaşılır.</p>
+                <HealthQuestions />
+                <Button className="w-full" type="submit">Sağlık Bilgilerimi Kaydet</Button>
+              </form>
+            )}
           </CardContent>
         </Card>
       ) : null}

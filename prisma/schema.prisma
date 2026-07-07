@@ -381,6 +381,7 @@ model Patient {
   address         String?
   allergies       String?
   chronicDiseases String?
+  medications     String?
   notes           String?
   tag             PatientTag         @default(NEW)
   lastVisitAt     DateTime?

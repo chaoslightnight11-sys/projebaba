@@ -27,7 +27,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (pathname.startsWith("/portal")) {
-    if (pathname === "/portal/login") {
+    if (pathname === "/portal/login" || pathname === "/portal/register") {
       return NextResponse.next();
     }
 

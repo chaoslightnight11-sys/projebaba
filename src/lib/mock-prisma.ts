@@ -97,6 +97,7 @@ const patients = names.map(([firstName, lastName], index) => ({
   address: "İstanbul",
   allergies: index % 5 === 0 ? "Penisilin hassasiyeti" : null,
   chronicDiseases: index % 7 === 0 ? "Hipertansiyon" : null,
+  medications: index % 7 === 0 ? "Ramipril 5mg" : null,
   notes: index % 4 === 0 ? "Tedavi sonrası telefonla takip tercih ediyor." : null,
   tag: [PatientTag.NEW, PatientTag.ACTIVE, PatientTag.PASSIVE, PatientTag.RISKY, PatientTag.VIP][index % 5],
   lastVisitAt: days(-index),
@@ -994,7 +995,7 @@ function model(data: any[], rich = (item: any) => item) {
   };
 }
 
-export const mockPrisma = {
+const mockPrismaStore = {
   organization: model([organization]),
   branch: model(branches),
   user: model(users),
@@ -1045,3 +1046,10 @@ export const mockPrisma = {
     return undefined;
   }
 };
+
+// Next dev her sayfa derlemesinde modülü yeniden değerlendirdiği için
+// bellek-içi veriler globalThis üzerinde saklanmazsa sıfırlanıyor
+// (ör. portaldan gelen randevu talebi panele geçince kayboluyordu).
+const globalMockStore = globalThis as unknown as { __clinicnovaMockPrisma?: typeof mockPrismaStore };
+
+export const mockPrisma = globalMockStore.__clinicnovaMockPrisma ?? (globalMockStore.__clinicnovaMockPrisma = mockPrismaStore);

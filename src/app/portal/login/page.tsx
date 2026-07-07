@@ -73,6 +73,12 @@ export default function PortalLoginPage({ searchParams }: { searchParams: { erro
               ) : null}
               <Button className="w-full" type="submit">Giriş Yap</Button>
             </form>
+            <p className="mt-4 text-center text-sm text-muted-foreground">
+              İlk kez mi geliyorsunuz?{" "}
+              <Link className="font-medium text-primary" href="/portal/register">
+                Kayıt Ol
+              </Link>
+            </p>
             {isDemoMode() ? (
               <p className="mt-4 rounded-md bg-muted p-3 text-xs text-muted-foreground">
                 Demo giriş: <span className="font-medium">+90 532 555 1000</span> (Ayşe Yılmaz)
