@@ -33,6 +33,7 @@ enum PatientTag {
 }
 
 enum AppointmentStatus {
+  PENDING_CONFIRMATION
   PLANNED
   ARRIVED
   NO_SHOW

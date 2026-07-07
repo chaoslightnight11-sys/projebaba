@@ -31,7 +31,12 @@ export default async function PortalHomePage() {
         <CardContent>
           {overview.nextAppointment ? (
             <div className="space-y-1">
-              <p className="text-lg font-semibold">{formatDateTime(overview.nextAppointment.startsAt, locale)}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-lg font-semibold">{formatDateTime(overview.nextAppointment.startsAt, locale)}</p>
+                <Badge variant={overview.nextAppointment.status === "PENDING_CONFIRMATION" ? "warning" : "success"}>
+                  {statusLabel(overview.nextAppointment.status, locale)}
+                </Badge>
+              </div>
               <p className="text-sm text-muted-foreground">
                 {overview.nextAppointment.treatmentType} · {overview.nextAppointment.doctor.name}
               </p>

@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { BellRing, CalendarDays, Send } from "lucide-react";
+import { BellRing, CalendarDays, Check, Send, UserRound, X } from "lucide-react";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/auth";
 import { intlLocale, statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { createAppointment, getAppointmentFormOptions, getAppointments } from "@/lib/services/appointmentService";
+import { getPortalAppointmentRequests, resolvePortalAppointmentRequest } from "@/lib/services/portalService";
 import { sendMockMessage } from "@/lib/services/notificationService";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 import { appointmentSchema } from "@/lib/validations/appointment";
@@ -25,6 +26,15 @@ async function createAppointmentAction(formData: FormData) {
   const payload = appointmentSchema.parse(Object.fromEntries(formData));
   await createAppointment(session.organizationId, payload);
   revalidatePath("/dashboard/appointments");
+}
+
+async function resolveRequestAction(appointmentId: string, decision: "approve" | "reject") {
+  "use server";
+  const session = await requireSession();
+  await resolvePortalAppointmentRequest(session.organizationId, appointmentId, decision);
+  revalidatePath("/dashboard/appointments");
+  revalidatePath("/portal/appointments");
+  revalidatePath("/portal");
 }
 
 async function sendReminderAction(patientId: string, phone: string) {
@@ -51,9 +61,10 @@ function startOfDay(date: Date) {
 export default async function AppointmentsPage() {
   const session = await requireSession();
   const locale = getLocale();
-  const [appointments, options] = await Promise.all([
+  const [appointments, options, portalRequests] = await Promise.all([
     getAppointments(session.organizationId),
-    getAppointmentFormOptions(session.organizationId)
+    getAppointmentFormOptions(session.organizationId),
+    getPortalAppointmentRequests(session.organizationId)
   ]);
   const today = startOfDay(new Date());
   const weekDays = Array.from({ length: 7 }).map((_, index) => {
@@ -65,6 +76,47 @@ export default async function AppointmentsPage() {
   return (
     <div className="space-y-6">
       <ModuleHeader icon={CalendarDays} title="Randevu Modülü" description="Takvim, liste, günlük/haftalık görünüm, doktor müsaitliği ve mock hatırlatma." />
+
+      {portalRequests.length > 0 ? (
+        <Card className="border-amber-300/60">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserRound className="h-5 w-5 text-amber-600" />
+              Hasta portalı talepleri
+              <Badge variant="warning">{portalRequests.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {portalRequests.map((request) => (
+              <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    {request.patient.firstName} {request.patient.lastName} · {request.treatmentType}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(request.startsAt, locale)} · {request.doctor.name} · {request.branch.name} · {request.patient.phone}
+                  </p>
+                  {request.notes ? <p className="mt-1 text-xs text-muted-foreground">{request.notes}</p> : null}
+                </div>
+                <div className="flex gap-2">
+                  <form action={resolveRequestAction.bind(null, request.id, "approve")}>
+                    <Button type="submit" size="sm">
+                      <Check className="h-4 w-4" />
+                      Onayla
+                    </Button>
+                  </form>
+                  <form action={resolveRequestAction.bind(null, request.id, "reject")}>
+                    <Button type="submit" variant="outline" size="sm">
+                      <X className="h-4 w-4" />
+                      Reddet
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

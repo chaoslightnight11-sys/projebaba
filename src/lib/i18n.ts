@@ -109,6 +109,7 @@ export const statusLabels: Record<Locale, Record<string, string>> = {
     PASSIVE: "Pasif",
     RISKY: "Riskli",
     VIP: "VIP",
+    PENDING_CONFIRMATION: "Onay Bekliyor",
     PLANNED: "Planlandı",
     ARRIVED: "Geldi",
     NO_SHOW: "Gelmedi",
@@ -212,6 +213,7 @@ export const statusLabels: Record<Locale, Record<string, string>> = {
     PASSIVE: "Passive",
     RISKY: "Risky",
     VIP: "VIP",
+    PENDING_CONFIRMATION: "Awaiting Confirmation",
     PLANNED: "Planned",
     ARRIVED: "Arrived",
     NO_SHOW: "No Show",
@@ -932,6 +934,13 @@ const additionalEnglishPhraseTranslations: Record<string, string> = {
   "Ödeme geçmişi": "Payment history",
   "Ödeme kaydı bulunmuyor.": "No payment records.",
   "Genel ödeme": "General payment",
+  "Tahmini ücret:": "Estimated fee:",
+  "Hasta portalı talepleri": "Patient portal requests",
+  "Onayla": "Approve",
+  "Reddet": "Reject",
+  "Hasta portalından alındı.": "Requested via patient portal.",
+  "Hasta portalından:": "Via patient portal:",
+  "Randevu oluşturulamadı. Lütfen ileri bir tarih seçip tekrar deneyin.": "The appointment could not be created. Please pick a future date and try again.",
   "Stok azaldi": "Low stock",
   "Bekleyen tahsilat": "Pending collection",
   "Memnuniyet skoru dustu": "Satisfaction score dropped",
@@ -1107,7 +1116,8 @@ const englishPatternTranslations: Array<[RegExp, (...matches: string[]) => strin
   [/^([\d.,]+) TL odeme bekliyor\.$/, (_match, amount) => `${amount} TL payment is pending.`],
   [/^Merhaba, (.+)$/, (_match, name) => `Hello, ${name}`],
   [/^· Diş (\d+)$/, (_match, tooth) => `· Tooth ${tooth}`],
-  [/^Tahmini ücret: (.+)$/, (_match, fee) => `Estimated fee: ${fee}`]
+  [/^Tahmini ücret: (.+)$/, (_match, fee) => `Estimated fee: ${fee}`],
+  [/^Hasta portalından: (.+)$/, (_match, note) => `Via patient portal: ${note}`]
 ];
 
 const turkishPatternTranslations: Array<[RegExp, (...matches: string[]) => string]> = [
@@ -1128,7 +1138,8 @@ const turkishPatternTranslations: Array<[RegExp, (...matches: string[]) => strin
   [/^([\d.,]+) TL payment is pending\.$/, (_match, amount) => `${amount} TL odeme bekliyor.`],
   [/^Hello, (.+)$/, (_match, name) => `Merhaba, ${name}`],
   [/^· Tooth (\d+)$/, (_match, tooth) => `· Diş ${tooth}`],
-  [/^Estimated fee: (.+)$/, (_match, fee) => `Tahmini ücret: ${fee}`]
+  [/^Estimated fee: (.+)$/, (_match, fee) => `Tahmini ücret: ${fee}`],
+  [/^Via patient portal: (.+)$/, (_match, note) => `Hasta portalından: ${note}`]
 ];
 
 export function translateText(value: string, locale: Locale) {

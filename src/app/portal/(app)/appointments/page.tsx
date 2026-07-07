@@ -60,9 +60,19 @@ const messages: Record<string, { text: string; tone: "success" | "error" }> = {
   success: { text: "Randevu talebiniz alındı. Klinik onayladığında bilgilendirileceksiniz.", tone: "success" },
   cancelled: { text: "Randevunuz iptal edildi.", tone: "success" },
   form: { text: "Lütfen tüm alanları doldurun.", tone: "error" },
-  date: { text: "Geçmiş bir tarih seçilemez, lütfen ileri bir tarih seçin.", tone: "error" },
+  date: { text: "Randevu oluşturulamadı. Lütfen ileri bir tarih seçip tekrar deneyin.", tone: "error" },
   cancel: { text: "Bu randevu iptal edilemez.", tone: "error" }
 };
+
+const timeSlots = Array.from({ length: 18 }).map((_, index) => {
+  const hour = 9 + Math.floor(index / 2);
+  const minute = index % 2 === 0 ? "00" : "30";
+  return `${String(hour).padStart(2, "0")}:${minute}`;
+});
+
+function localDateString(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export default async function PortalAppointmentsPage({
   searchParams
@@ -78,7 +88,7 @@ export default async function PortalAppointmentsPage({
 
   const messageKey = searchParams.success ? "success" : searchParams.cancelled ? "cancelled" : searchParams.error;
   const message = messageKey ? messages[messageKey] : null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString(new Date());
 
   return (
     <div className="space-y-4">
@@ -128,7 +138,11 @@ export default async function PortalAppointmentsPage({
               </div>
               <div className="space-y-2">
                 <Label>Saat</Label>
-                <Input name="time" type="time" min="09:00" max="18:00" step="1800" required />
+                <Select name="time" defaultValue="10:00" required>
+                  {timeSlots.map((slot) => (
+                    <option key={slot} value={slot}>{slot}</option>
+                  ))}
+                </Select>
               </div>
             </div>
             <div className="space-y-2">
@@ -155,12 +169,14 @@ export default async function PortalAppointmentsPage({
               <div key={appointment.id} className="space-y-2 rounded-md border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold">{formatDateTime(appointment.startsAt, locale)}</p>
-                  <Badge variant={appointment.status === "PLANNED" ? "warning" : "success"}>{statusLabel(appointment.status, locale)}</Badge>
+                  <Badge variant={appointment.status === "PENDING_CONFIRMATION" ? "warning" : appointment.status === "PLANNED" ? "success" : "muted"}>
+                    {statusLabel(appointment.status, locale)}
+                  </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {appointment.treatmentType} · {appointment.doctor.name} · {appointment.branch.name}
                 </p>
-                {appointment.status === "PLANNED" ? (
+                {appointment.status === "PLANNED" || appointment.status === "PENDING_CONFIRMATION" ? (
                   <form action={cancelAppointmentAction}>
                     <input type="hidden" name="appointmentId" value={appointment.id} />
                     <Button variant="outline" size="sm" type="submit">İptal Et</Button>

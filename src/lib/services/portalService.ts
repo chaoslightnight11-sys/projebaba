@@ -11,7 +11,11 @@ export async function getPortalOverview(session: PatientSession) {
   const [patient, nextAppointment, treatments, payments] = await Promise.all([
     prisma.patient.findFirst({ where: { id: session.patientId, organizationId: session.organizationId } }),
     prisma.appointment.findFirst({
-      where: { patientId: session.patientId, startsAt: { gte: now }, status: AppointmentStatus.PLANNED },
+      where: {
+        patientId: session.patientId,
+        startsAt: { gte: now },
+        status: { in: [AppointmentStatus.PLANNED, AppointmentStatus.PENDING_CONFIRMATION] }
+      },
       include: { doctor: { select: { name: true } }, branch: { select: { name: true } } },
       orderBy: { startsAt: "asc" }
     }),
@@ -79,7 +83,7 @@ export async function bookAppointment(session: PatientSession, input: PortalAppo
       startsAt,
       durationMinutes: 30,
       treatmentType: input.treatmentType,
-      status: AppointmentStatus.PLANNED,
+      status: AppointmentStatus.PENDING_CONFIRMATION,
       notes: input.notes ? `Hasta portalından: ${input.notes}` : "Hasta portalından alındı.",
       organizationId: session.organizationId,
       branchId: session.branchId
@@ -88,16 +92,44 @@ export async function bookAppointment(session: PatientSession, input: PortalAppo
 }
 
 export async function cancelAppointment(session: PatientSession, appointmentId: string) {
+  const cancellableStatuses: AppointmentStatus[] = [AppointmentStatus.PLANNED, AppointmentStatus.PENDING_CONFIRMATION];
   const appointment = await prisma.appointment.findFirst({
     where: { id: appointmentId, patientId: session.patientId, organizationId: session.organizationId }
   });
-  if (!appointment || appointment.status !== AppointmentStatus.PLANNED || new Date(appointment.startsAt) < new Date()) {
+  if (!appointment || !cancellableStatuses.includes(appointment.status) || new Date(appointment.startsAt) < new Date()) {
     throw new Error("Bu randevu iptal edilemez.");
   }
 
   return prisma.appointment.updateMany({
     where: { id: appointment.id, patientId: session.patientId },
     data: { status: AppointmentStatus.CANCELLED }
+  });
+}
+
+export async function getPortalAppointmentRequests(organizationId: string) {
+  return prisma.appointment.findMany({
+    where: { organizationId, status: AppointmentStatus.PENDING_CONFIRMATION },
+    include: {
+      patient: { select: { firstName: true, lastName: true, phone: true } },
+      doctor: { select: { name: true } },
+      branch: { select: { name: true } }
+    },
+    orderBy: { startsAt: "asc" },
+    take: 50
+  });
+}
+
+export async function resolvePortalAppointmentRequest(organizationId: string, appointmentId: string, decision: "approve" | "reject") {
+  const appointment = await prisma.appointment.findFirst({
+    where: { id: appointmentId, organizationId, status: AppointmentStatus.PENDING_CONFIRMATION }
+  });
+  if (!appointment) {
+    throw new Error("Onay bekleyen randevu bulunamadı.");
+  }
+
+  return prisma.appointment.updateMany({
+    where: { id: appointment.id, organizationId },
+    data: { status: decision === "approve" ? AppointmentStatus.PLANNED : AppointmentStatus.CANCELLED }
   });
 }
 
