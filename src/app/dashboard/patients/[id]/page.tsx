@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { Save, Trash2, Users } from "lucide-react";
 import { ModuleHeader } from "@/components/dashboard/module-header";
+import { PatientFiles, type PatientFileMeta } from "@/components/dashboard/patient-files";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { requireSession } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { deletePatient, getPatientById, updatePatient } from "@/lib/services/patientService";
+import { prisma } from "@/lib/prisma";
 import { patientSchema } from "@/lib/validations/patient";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 
@@ -41,6 +43,20 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
   if (!patient) {
     notFound();
   }
+
+  const patientFiles = await prisma.patientFile.findMany({
+    where: { patientId: patient.id, organizationId: session.organizationId },
+    orderBy: { createdAt: "desc" }
+  });
+  const initialFiles: PatientFileMeta[] = patientFiles.map((file) => ({
+    id: file.id,
+    category: file.category,
+    fileName: file.fileName,
+    mimeType: file.mimeType,
+    size: file.size,
+    note: file.note,
+    createdAt: file.createdAt.toISOString()
+  }));
 
   const totalPaid = patient.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
 
@@ -170,6 +186,8 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
         </div>
       </div>
 
+      <PatientFiles patientId={patient.id} initialFiles={initialFiles} />
+
       <div className="grid gap-4 xl:grid-cols-3">
         <Card>
           <CardHeader><CardTitle>Tedavi geçmişi</CardTitle></CardHeader>
@@ -199,7 +217,7 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
             <div className="rounded-md border bg-background p-3">{patient.consents.length} dijital onam kaydı</div>
             <div className="rounded-md border bg-background p-3">{patient.surveyResponses.length} memnuniyet anketi</div>
             <div className="rounded-md border bg-background p-3">{patient.recalls.length} takip kaydı</div>
-            <div className="rounded-md border bg-background p-3">Dosyalar: mock klasör hazır</div>
+            <div className="rounded-md border bg-background p-3">{initialFiles.length} dosya / fotoğraf</div>
           </CardContent>
         </Card>
       </div>

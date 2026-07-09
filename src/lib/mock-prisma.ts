@@ -1000,6 +1000,7 @@ const mockPrismaStore = {
   branch: model(branches),
   user: model(users),
   patient: model(patients, richPatient),
+  patientFile: model([]),
   appointment: model(appointments, richAppointment),
   treatmentPlan: model(treatmentPlans, richTreatmentPlan),
   treatment: model(treatments, richTreatment),

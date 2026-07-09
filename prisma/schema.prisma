@@ -32,6 +32,13 @@ enum PatientTag {
   VIP
 }
 
+enum PatientFileCategory {
+  BEFORE
+  AFTER
+  DOCUMENT
+  OTHER
+}
+
 enum AppointmentStatus {
   PENDING_CONFIRMATION
   PLANNED
@@ -313,6 +320,7 @@ model Organization {
   reports         ReportSnapshot[]
   demoRequests    DemoRequest[]
   auditLogs       AuditLog[]
+  patientFiles    PatientFile[]
 }
 
 model Branch {
@@ -398,6 +406,7 @@ model Patient {
   surveyResponses SurveyResponse[]
   communication   CommunicationLog[]
   recalls         Recall[]
+  files           PatientFile[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -405,6 +414,25 @@ model Patient {
   @@index([branchId])
   @@index([phone])
   @@index([tag])
+}
+
+model PatientFile {
+  id             String              @id @default(cuid())
+  patientId      String
+  organizationId String
+  category       PatientFileCategory @default(OTHER)
+  fileName       String
+  mimeType       String
+  size           Int
+  data           Bytes
+  note           String?
+  patient        Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([patientId])
+  @@index([organizationId])
 }
 
 model Appointment {
