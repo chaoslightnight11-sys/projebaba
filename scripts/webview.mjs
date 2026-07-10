@@ -73,8 +73,12 @@ function openBrowser(url) {
   ];
   const chromiumApp = chromeCandidates.find((candidate) => existsSync(candidate));
 
+  // Varsayılan Chrome profili yerine izole profil kullan: kullanıcının
+  // eklentileri (e-imza/toolbar vb.) sayfaya kod enjekte edip konsola hata
+  // basıyor ve Next dev overlay'i "N errors" rozeti gösteriyordu.
+  const profileDir = "/private/tmp/clinicnova-chrome-profile";
   const args = chromiumApp
-    ? ["-na", chromiumApp, "--args", `--app=${url}`, "--new-window"]
+    ? ["-na", chromiumApp, "--args", `--app=${url}`, "--new-window", `--user-data-dir=${profileDir}`, "--no-first-run", "--no-default-browser-check"]
     : ["-n", url];
 
   const opener = spawn("open", args, {
