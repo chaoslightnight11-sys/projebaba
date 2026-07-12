@@ -35,6 +35,15 @@ test("a public package can be accepted only once", async ({ page }, testInfo) =>
   await expect(page.getByRole("button", { name: /Paketi Kabul Ediyorum|I Accept This Package/ })).toHaveCount(0);
 });
 
+test("demo can open without a live database", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page.getByRole("link", { name: "Demo olarak incele" })).toBeVisible();
+  await page.getByRole("link", { name: "Demo olarak incele" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading", { name: "Klinik dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Gelir fırsatları hazır" })).toBeVisible();
+});
+
 test("staff can sign in, use the dashboard and sign out", async ({ page }, testInfo) => {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
