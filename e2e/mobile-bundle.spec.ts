@@ -63,7 +63,7 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Hastayı kaydet" }).click();
   await expect(page.locator("#patientList").getByText("Tuna Akın", { exact: true })).toBeVisible();
 
-  await page.locator("#patientList").getByRole("button", { name: /Tuna Akın/ }).click();
+  await page.locator("#patientList button.patient-card").filter({ hasText: "Tuna Akın" }).click();
   await expect(page.getByText("Geçmiş tedaviler", { exact: true })).toBeVisible();
   await expect(page.getByText("Ödeme geçmişi", { exact: true })).toBeVisible();
   await expect(page.getByText("Before / After fotoğrafları", { exact: true })).toBeVisible();
@@ -73,10 +73,16 @@ test("bundled Android interface works offline", async ({ page }) => {
     buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")
   });
   await expect(page.getByText(/Before · Şimdi/)).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Before fotoğrafını sil" }).click();
+  await expect(page.getByText(/Before · Şimdi/)).toHaveCount(0);
   await page.getByRole("button", { name: "Yeni randevu oluştur" }).click();
   await expect(page.getByRole("combobox", { name: "Hasta", exact: true }).locator("option:checked")).toHaveText("Tuna Akın");
   await page.getByRole("button", { name: "Randevuyu kaydet" }).click();
   await expect(page.locator("#appointmentList").getByText("Tuna Akın", { exact: true })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Tuna Akın randevusunu sil" }).click();
+  await expect(page.locator("#appointmentList").getByText("Tuna Akın", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Ana Sayfa", exact: true }).click();
   await page.getByRole("button", { name: "Ödeme al" }).click();
@@ -92,6 +98,14 @@ test("bundled Android interface works offline", async ({ page }) => {
   await expect(page.locator("#transactionList")).toContainText("İmplant");
   await expect(page.locator("#transactionList")).toContainText("Kemik grefti");
   await expect(page.locator("#transactionList")).toContainText("Kalan");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Tuna Akın finans kaydını sil" }).click();
+  await expect(page.locator("#transactionList").getByText("Tuna Akın", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Hastalar", exact: true }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Tuna Akın hastasını sil" }).click();
+  await expect(page.locator("#patientList").getByText("Tuna Akın", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Ana Sayfa", exact: true }).click();
   await page.getByRole("button", { name: "Bildirimler" }).click();

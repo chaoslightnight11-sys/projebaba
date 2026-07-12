@@ -163,7 +163,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .filter-chips button { border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; color: var(--muted); background: var(--surface); padding: 8px 14px; font-size: 10px; font-weight: 750; }
 .filter-chips button.active { border-color: var(--primary); color: white; background: var(--primary); }
 .list-stack { display: grid; gap: 10px; }
+.entry-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 8px; }
 .patient-card, .transaction-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); padding: 13px; }
+.entry-row .patient-card, .entry-row .appointment-card { min-width: 0; }
+.delete-button { min-width: 42px; border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line)); border-radius: 13px; color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); padding: 8px; font-size: 8px; font-weight: 800; }
+.delete-button:hover { background: color-mix(in srgb, var(--danger) 13%, var(--surface)); }
 .patient-avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; font-size: 11px; font-weight: 850; }
 .patient-copy, .transaction-copy { min-width: 0; }
 .patient-copy strong, .transaction-copy strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
@@ -221,6 +225,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .transaction-amount small { display: block; margin-top: 3px; color: var(--muted); font-size: 7px; font-weight: 600; }
 .transaction-lines, .installment-note { display: block; margin-top: 5px; color: var(--text); font-size: 8px; line-height: 1.35; white-space: normal; }
 .installment-note { color: var(--warning); font-weight: 750; }
+.transaction-card-deletable { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 
 .module-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; margin-top: 20px; }
 .module-card { min-height: 116px; border: 1px solid var(--line); border-radius: 19px; display: flex; flex-direction: column; align-items: flex-start; color: var(--text); background: var(--surface); padding: 15px; text-align: left; }
@@ -263,7 +268,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .patient-section-title strong { font-size: 13px; }
 .patient-section-title span { min-width: 26px; border-radius: 9px; color: var(--primary); background: var(--primary-soft); padding: 4px 7px; text-align: center; font-size: 9px; font-weight: 800; }
 .history-list { display: grid; gap: 8px; }
-.history-list article { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; border: 1px solid var(--line); border-radius: 14px; padding: 11px; }
+.history-list article { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 14px; padding: 11px; }
 .history-list article > i { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; color: var(--primary); background: var(--primary-soft); font-style: normal; font-size: 13px; font-weight: 850; }
 .history-list strong, .history-list small, .history-list p { display: block; }
 .history-list strong { font-size: 10px; }
@@ -271,9 +276,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .history-list p { margin-top: 5px; color: var(--muted); font-size: 8px; line-height: 1.45; }
 .empty-inline { grid-column: 1/-1; border-radius: 13px; color: var(--muted); background: var(--surface-2); padding: 12px; font-size: 9px; }
 .photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.photo-grid figure { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.photo-grid figure { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
 .photo-grid img { width: 100%; aspect-ratio: 4/3; display: block; object-fit: cover; }
 .photo-grid figcaption { padding: 8px; color: var(--muted); font-size: 8px; }
+.photo-delete { position: absolute; top: 6px; right: 6px; min-width: 36px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(8px); }
 .photo-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .photo-actions .button { min-height: 42px; font-size: 9px; text-align: center; }
 .photo-actions .button:last-child { grid-column: 1/-1; }

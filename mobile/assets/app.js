@@ -170,11 +170,11 @@
     $("#patientCountLabel").textContent = `${state.patients.length} kayıtlı hasta`;
     $("#patientList").innerHTML = patients.length ? patients.map((patient) => {
       const [background, foreground] = palette[patient.color % palette.length].split("|");
-      return `<button class="patient-card" data-patient="${patient.id}" style="width:100%;text-align:left;color:inherit">
+      return `<div class="entry-row"><button class="patient-card" data-patient="${patient.id}" style="width:100%;text-align:left;color:inherit">
         <span class="patient-avatar" style="background:${background};color:${foreground}">${initials(patient.name)}</span>
         <span class="patient-copy"><strong>${escapeHtml(patient.name)}</strong><small>${escapeHtml(patient.phone)} · ${escapeHtml(patient.lastVisit)}</small><span class="patient-tags"><i class="tag">${escapeHtml(patient.tag)}</i><i class="tag">${escapeHtml(patient.treatment)}</i></span></span>
         <svg><use href="#i-chevron"/></svg>
-      </button>`;
+      </button><button class="delete-button" data-delete-patient="${patient.id}" aria-label="${escapeHtml(patient.name)} hastasını sil">Sil</button></div>`;
     }).join("") : `<div class="empty-state"><strong>Sonuç bulunamadı</strong><br/>Arama veya filtreyi değiştirin.</div>`;
   }
 
@@ -193,10 +193,10 @@
     $("#appointmentTotal").textContent = appointments.length;
     $("#appointmentList").innerHTML = appointments.length ? appointments.map((appointment) => {
       const patient = patientById(appointment.patientId);
-      return `<button class="appointment-card" data-appointment="${appointment.id}" style="width:100%;text-align:left;color:inherit">
+      return `<div class="entry-row"><button class="appointment-card" data-appointment="${appointment.id}" style="width:100%;text-align:left;color:inherit">
         <span class="appointment-clock"><strong>${appointment.time}</strong><small>${appointment.duration} dk</small></span>
         <span class="appointment-main"><span class="row"><strong>${escapeHtml(patient?.name || "Hasta")}</strong><i class="status-pill ${appointment.status}">${statusLabel(appointment.status)}</i></span><p>${escapeHtml(appointment.treatment)} · ${escapeHtml(appointment.room)}</p><footer><i class="doctor-chip">${initials(appointment.doctor.replace("Dr. ", ""))}</i>${escapeHtml(appointment.doctor)}</footer></span>
-      </button>`;
+      </button><button class="delete-button" data-delete-appointment="${appointment.id}" aria-label="${escapeHtml(patient?.name || "Hasta")} randevusunu sil">Sil</button></div>`;
     }).join("") : `<div class="empty-state"><strong>Bu gün boş</strong><br/>Yeni bir randevu oluşturarak planlamaya başlayın.</div>`;
   }
 
@@ -216,10 +216,11 @@
       ["Net nakit akışı", currency(income - expense), "+%11 geçen aya göre"]
     ].map(([label, value, detail]) => `<article class="finance-stat"><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`).join("");
     $("#transactionFilterButton").textContent = ({ ALL: "Filtrele", PAID: "Ödenenler", PENDING: "Gecikenler", EXPENSE: "Giderler" })[state.transactionFilter];
-    $("#transactionList").innerHTML = visibleTransactions.length ? visibleTransactions.map((item) => `<article class="transaction-card">
+    $("#transactionList").innerHTML = visibleTransactions.length ? visibleTransactions.map((item) => `<article class="transaction-card transaction-card-deletable">
       <span class="transaction-icon ${item.type === "expense" ? "expense" : item.status === "PENDING" ? "pending" : ""}">${item.type === "expense" ? "−" : item.status === "PENDING" ? "!" : "+"}</span>
       <span class="transaction-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)} · ${escapeHtml(item.date)}</small>${item.components?.length ? `<span class="transaction-lines">${item.components.map((line) => `${escapeHtml(line.name)} ${currency(line.amount)}`).join(" · ")}</span>` : ""}${outstandingAmount(item) > 0 ? `<span class="installment-note">${item.paidInstallments || 0}/${item.installmentCount || 1} taksit ödendi · Kalan ${currency(outstandingAmount(item))}</span>` : ""}</span>
       <span class="transaction-amount ${item.type === "expense" ? "expense" : outstandingAmount(item) > 0 ? "pending" : ""}">${item.type === "expense" ? "−" : "+"}${currency(item.amount)}<small>${item.type === "expense" ? "Gider" : outstandingAmount(item) > 0 ? "Kısmi ödendi" : "Ödendi"}</small></span>
+      <button class="delete-button" data-delete-transaction="${item.id}" aria-label="${escapeHtml(item.name)} finans kaydını sil">Sil</button>
     </article>`).join("") : `<div class="empty-state"><strong>İşlem bulunamadı</strong><br/>Filtreyi değiştirerek diğer hareketleri görüntüleyin.</div>`;
   }
 
@@ -329,9 +330,9 @@
     openModal("HASTA PROFİLİ", patient.name, `<div class="modal-grid">
       <p class="modal-note"><strong>${escapeHtml(patient.phone)}</strong><br/>${escapeHtml(patient.email || "E-posta belirtilmedi")}<br/>Son ziyaret: ${escapeHtml(patient.lastVisit)}</p>
       <div class="finance-stats"><article class="finance-stat"><span>Tahsil edilen</span><strong>${currency(totalPaid)}</strong><small>${payments.length} ödeme kaydı</small></article><article class="finance-stat"><span>Kalan bakiye</span><strong>${currency(totalRemaining)}</strong><small>${appointments.length} randevu</small></article></div>
-      <section class="patient-section"><div class="patient-section-title"><strong>Geçmiş tedaviler</strong><span>${history.length}</span></div><div class="history-list">${history.length ? history.map((item) => `<article><i>🦷</i><span><strong>${escapeHtml(item.treatment)}</strong><small>${escapeHtml(item.date)} · ${escapeHtml(item.doctor)}</small><p>${escapeHtml(item.note)}</p></span></article>`).join("") : `<p class="empty-inline">Tedavi geçmişi yok.</p>`}</div></section>
-      <section class="patient-section"><div class="patient-section-title"><strong>Ödeme geçmişi</strong><span>${payments.length}</span></div><div class="history-list">${payments.length ? payments.map((item) => `<article><i>₺</i><span><strong>${currency(item.amount)} · ${escapeHtml(item.detail)}</strong><small>${escapeHtml(item.date)}${outstandingAmount(item) ? ` · Kalan ${currency(outstandingAmount(item))}` : " · Tamamlandı"}</small>${item.components?.length ? `<p>${item.components.map((line) => `${escapeHtml(line.name)}: ${currency(line.amount)}`).join(" · ")}</p>` : ""}</span></article>`).join("") : `<p class="empty-inline">Ödeme geçmişi yok.</p>`}</div></section>
-      <section class="patient-section"><div class="patient-section-title"><strong>Before / After fotoğrafları</strong><span>${media.length}</span></div><div class="photo-grid">${media.length ? media.map((item) => `<figure><img src="${escapeHtml(item.dataUrl)}" alt="${escapeHtml(item.kind)} fotoğrafı"/><figcaption>${escapeHtml(item.kind)} · ${escapeHtml(item.date)}</figcaption></figure>`).join("") : `<p class="empty-inline">Henüz fotoğraf eklenmedi.</p>`}</div><div class="photo-actions"><label class="button button-secondary">📷 Before çek<input class="visually-hidden" type="file" accept="image/*" capture="environment" data-patient-media="${patient.id}" data-media-kind="Before" /></label><label class="button button-secondary">📷 After çek<input class="visually-hidden" type="file" accept="image/*" capture="environment" data-patient-media="${patient.id}" data-media-kind="After" /></label><label class="button button-secondary">Dosyalardan yükle<input class="visually-hidden" type="file" accept="image/*" data-patient-media="${patient.id}" data-media-kind="Dosya" /></label></div></section>
+      <section class="patient-section"><div class="patient-section-title"><strong>Geçmiş tedaviler</strong><span>${history.length}</span></div><div class="history-list">${history.length ? history.map((item, index) => `<article><i>🦷</i><span><strong>${escapeHtml(item.treatment)}</strong><small>${escapeHtml(item.date)} · ${escapeHtml(item.doctor)}</small><p>${escapeHtml(item.note)}</p></span><button class="delete-button" data-delete-treatment="${index}" data-patient-id="${patient.id}" aria-label="${escapeHtml(item.treatment)} kaydını sil">Sil</button></article>`).join("") : `<p class="empty-inline">Tedavi geçmişi yok.</p>`}</div></section>
+      <section class="patient-section"><div class="patient-section-title"><strong>Ödeme geçmişi</strong><span>${payments.length}</span></div><div class="history-list">${payments.length ? payments.map((item) => `<article><i>₺</i><span><strong>${currency(item.amount)} · ${escapeHtml(item.detail)}</strong><small>${escapeHtml(item.date)}${outstandingAmount(item) ? ` · Kalan ${currency(outstandingAmount(item))}` : " · Tamamlandı"}</small>${item.components?.length ? `<p>${item.components.map((line) => `${escapeHtml(line.name)}: ${currency(line.amount)}`).join(" · ")}</p>` : ""}</span><button class="delete-button" data-delete-transaction="${item.id}" data-patient-id="${patient.id}" aria-label="Ödeme kaydını sil">Sil</button></article>`).join("") : `<p class="empty-inline">Ödeme geçmişi yok.</p>`}</div></section>
+      <section class="patient-section"><div class="patient-section-title"><strong>Before / After fotoğrafları</strong><span>${media.length}</span></div><div class="photo-grid">${media.length ? media.map((item) => `<figure><img src="${escapeHtml(item.dataUrl)}" alt="${escapeHtml(item.kind)} fotoğrafı"/><figcaption>${escapeHtml(item.kind)} · ${escapeHtml(item.date)}</figcaption><button class="delete-button photo-delete" data-delete-media="${item.id}" data-patient-id="${patient.id}" aria-label="${escapeHtml(item.kind)} fotoğrafını sil">Sil</button></figure>`).join("") : `<p class="empty-inline">Henüz fotoğraf eklenmedi.</p>`}</div><div class="photo-actions"><label class="button button-secondary">📷 Before çek<input class="visually-hidden" type="file" accept="image/*" capture="environment" data-patient-media="${patient.id}" data-media-kind="Before" /></label><label class="button button-secondary">📷 After çek<input class="visually-hidden" type="file" accept="image/*" capture="environment" data-patient-media="${patient.id}" data-media-kind="After" /></label><label class="button button-secondary">Dosyalardan yükle<input class="visually-hidden" type="file" accept="image/*" data-patient-media="${patient.id}" data-media-kind="Dosya" /></label></div></section>
       <div class="modal-actions"><button class="button button-secondary" data-action="add-appointment" data-patient-prefill="${patient.id}">Yeni randevu oluştur</button><button class="button button-primary" data-action="add-payment" data-patient-prefill="${patient.id}">Ödeme ekle</button></div>
     </div>`);
   }
@@ -526,6 +527,46 @@
     if (target.dataset.go) { closeModal(); return navigate(target.dataset.go); }
     if (target.dataset.date) { state.selectedDate = target.dataset.date; renderAppointments(); return; }
     if (target.dataset.filter) { state.patientFilter = target.dataset.filter; $$("#patientFilters button").forEach((button) => button.classList.toggle("active", button === target)); renderPatients(); return; }
+    if (target.dataset.deletePatient) {
+      const patientId = Number(target.dataset.deletePatient);
+      const patient = patientById(patientId);
+      if (!patient || !window.confirm(`${patient.name} ve bağlı randevu, ödeme, tedavi ve fotoğraf kayıtları silinsin mi?`)) return;
+      state.patients = state.patients.filter((item) => item.id !== patientId);
+      state.appointments = state.appointments.filter((item) => item.patientId !== patientId);
+      state.transactions = state.transactions.filter((item) => item.patientId !== patientId);
+      delete state.treatmentHistory[patientId];
+      delete state.patientMedia[patientId];
+      saveData(); renderAll(); closeModal(); showToast("Hasta ve bağlı kayıtları silindi."); return;
+    }
+    if (target.dataset.deleteAppointment) {
+      const appointmentId = Number(target.dataset.deleteAppointment);
+      if (!window.confirm("Bu randevu silinsin mi?")) return;
+      state.appointments = state.appointments.filter((item) => item.id !== appointmentId);
+      saveData(); renderAll(); closeModal(); showToast("Randevu silindi."); return;
+    }
+    if (target.dataset.deleteTransaction) {
+      const transactionId = Number(target.dataset.deleteTransaction);
+      const patientId = Number(target.dataset.patientId);
+      if (!window.confirm("Bu finans kaydı silinsin mi?")) return;
+      state.transactions = state.transactions.filter((item) => item.id !== transactionId);
+      saveData(); renderAll();
+      if (patientId && patientById(patientId)) openPatientDetail(patientId); else closeModal();
+      showToast("Finans kaydı silindi."); return;
+    }
+    if (target.dataset.deleteTreatment !== undefined) {
+      const patientId = Number(target.dataset.patientId);
+      const index = Number(target.dataset.deleteTreatment);
+      if (!window.confirm("Bu tedavi geçmişi kaydı silinsin mi?")) return;
+      state.treatmentHistory[patientId] = (state.treatmentHistory[patientId] || []).filter((_, itemIndex) => itemIndex !== index);
+      saveData(); openPatientDetail(patientId); showToast("Tedavi kaydı silindi."); return;
+    }
+    if (target.dataset.deleteMedia) {
+      const patientId = Number(target.dataset.patientId);
+      const mediaId = Number(target.dataset.deleteMedia);
+      if (!window.confirm("Bu fotoğraf silinsin mi?")) return;
+      state.patientMedia[patientId] = (state.patientMedia[patientId] || []).filter((item) => item.id !== mediaId);
+      saveData(); openPatientDetail(patientId); showToast("Fotoğraf silindi."); return;
+    }
     if (target.dataset.patient) return openPatientDetail(target.dataset.patient);
     if (target.dataset.appointment) return openAppointmentDetail(target.dataset.appointment);
     if (target.dataset.module) return openModule(target.dataset.module);
