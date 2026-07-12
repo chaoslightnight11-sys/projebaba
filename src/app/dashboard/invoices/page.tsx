@@ -19,6 +19,7 @@ async function sendInvoiceAction(invoiceId: string) {
   const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, organizationId: session.organizationId } });
   if (!invoice) throw new Error("Fatura bulunamadi.");
   const result = await sendEInvoice(invoice.number);
+  if (!result.ok) throw new Error(result.message || "Fatura sağlayıcıya teslim edilemedi.");
   await prisma.invoice.update({
     where: { id: invoice.id },
     data: { status: InvoiceStatus.SENT, providerRef: result.reference, issuedAt: new Date() }
@@ -38,7 +39,7 @@ export default async function InvoicesPage() {
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={FileText} title="Faturalar" description="Fatura durumu, e-Fatura/e-Arşiv mock gönderimi ve sağlayıcı referansı." />
+      <ModuleHeader icon={FileText} title="Faturalar" description="Fatura durumu, e-Fatura/e-Arşiv sağlayıcı gönderimi ve doğrulanabilir referans takibi." />
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -56,7 +57,7 @@ export default async function InvoicesPage() {
                     <form action={sendInvoiceAction.bind(null, invoice.id)}>
                       <Button type="submit" variant="outline" size="sm">
                         <Send className="h-4 w-4" />
-                        Mock gönder
+                        Sağlayıcıya gönder
                       </Button>
                     </form>
                   </TableCell>

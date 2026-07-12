@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { HeartPulse, Send, TriangleAlert } from "lucide-react";
-import { IntegrationProvider, PostTreatmentFollowUpStatus } from "@prisma/client";
+import { CommunicationChannel, IntegrationLogStatus, IntegrationProvider, PostTreatmentFollowUpStatus } from "@prisma/client";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -13,32 +13,61 @@ import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
 import { writeIntegrationLog } from "@/lib/services/integrationLogService";
+import { sendMessage } from "@/lib/services/notificationService";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import { statusTone } from "@/lib/tourism";
 
-function resultUrl(message: string) {
-  return `/dashboard/tourism/post-treatment?success=${encodeURIComponent(message)}`;
+function resultUrl(type: "success" | "error", message: string) {
+  return `/dashboard/tourism/post-treatment?${type}=${encodeURIComponent(message)}`;
 }
 
 async function sendCareMessageAction(id: string) {
   "use server";
   const session = await requireSession();
   const followUp = await prisma.postTreatmentFollowUp.findFirst({ where: { id, organizationId: session.organizationId } });
-  if (!followUp) redirect(resultUrl("Takip kaydı bulunamadı."));
-  await prisma.postTreatmentFollowUp.update({ where: { id }, data: { status: PostTreatmentFollowUpStatus.SENT, nextMessageAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } });
-  await writeIntegrationLog({
-    organizationId: session.organizationId,
-    branchId: followUp.branchId,
-    provider: IntegrationProvider.WHATSAPP,
-    eventType: "post-care.sent",
-    payloadJson: { followUpId: id, link: `/care-check/${followUp.publicToken}` },
-    responseJson: { queued: true, mode: "mock" }
-  });
+  if (!followUp) redirect(resultUrl("error", "Takip kaydı bulunamadı."));
+  const patient = await prisma.patient.findFirst({ where: { id: followUp.patientId, organizationId: session.organizationId } });
+  if (!patient) redirect(resultUrl("error", "Takip kaydının hastası bulunamadı."));
+  const link = new URL(`/care-check/${followUp.publicToken}`, process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").toString();
+  try {
+    const delivery = await sendMessage({
+      organizationId: session.organizationId,
+      branchId: followUp.branchId ?? patient.branchId,
+      patientId: patient.id,
+      to: patient.phone,
+      message: `Merhaba ${patient.firstName}, tedavi sonrası kontrol formunu buradan doldurabilirsiniz: ${link}`,
+      channel: CommunicationChannel.WHATSAPP,
+      subject: "Tedavi sonrası kontrol"
+    });
+    await prisma.postTreatmentFollowUp.update({ where: { id }, data: { status: PostTreatmentFollowUpStatus.SENT, nextMessageAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } });
+    await writeIntegrationLog({
+      organizationId: session.organizationId,
+      branchId: followUp.branchId ?? patient.branchId,
+      provider: IntegrationProvider.WHATSAPP,
+      eventType: "post-care.sent",
+      payloadJson: { followUpId: id, patientId: patient.id, link },
+      responseJson: delivery,
+      status: IntegrationLogStatus.SUCCESS
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Bakım mesajı sağlayıcıya teslim edilemedi.";
+    await writeIntegrationLog({
+      organizationId: session.organizationId,
+      branchId: followUp.branchId ?? patient.branchId,
+      provider: IntegrationProvider.WHATSAPP,
+      eventType: "post-care.failed",
+      payloadJson: { followUpId: id, patientId: patient.id, link },
+      responseJson: { ok: false },
+      status: IntegrationLogStatus.FAILED,
+      errorMessage: message
+    });
+    redirect(resultUrl("error", message));
+  }
   revalidatePath("/dashboard/tourism/post-treatment");
-  redirect(resultUrl("Tedavi sonrası bakım mesajı mock gönderildi."));
+  redirect(resultUrl("success", "Tedavi sonrası bakım mesajı sağlayıcıya teslim edildi."));
 }
 
-export default async function PostTreatmentPage(props: { searchParams: Promise<{ success?: string }> }) {
+export default async function PostTreatmentPage(props: { searchParams: Promise<{ success?: string; error?: string }> }) {
   const searchParams = await props.searchParams;
   const session = await requireSession();
   const locale = await getLocale();
@@ -53,6 +82,7 @@ export default async function PostTreatmentPage(props: { searchParams: Promise<{
     <div className="space-y-6">
       <ModuleHeader icon={HeartPulse} title="Tedavi Sonrası Takip" description="Hasta ülkesine döndükten sonra otomatik bakım mesajı, sorun bildirme ve hekim aksiyonu." />
       {searchParams.success ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{searchParams.success}</div> : null}
+      {searchParams.error ? <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{searchParams.error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Planlı bakım</p><p className="mt-1 text-2xl font-semibold">{followUps.length}</p></CardContent></Card>

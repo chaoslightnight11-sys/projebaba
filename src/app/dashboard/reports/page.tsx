@@ -1,9 +1,10 @@
-import { BarChart3, Download, FileText } from "lucide-react";
+import { BarChart3, Download } from "lucide-react";
 import Link from "next/link";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PrintButton } from "@/components/ui/print-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireSession } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
@@ -29,7 +30,7 @@ export default async function ReportsPage() {
       <ModuleHeader icon={BarChart3} title="Raporlama" description="Gelir, doktor performansı, doluluk, iptal, tedavi dağılımı, stok, memnuniyet ve şube karşılaştırması." />
       <div className="flex flex-wrap gap-2">
         <Link className={cn(buttonVariants(), "gap-2")} href="/api/reports/export"><Download className="h-4 w-4" />CSV indir</Link>
-        <button className={cn(buttonVariants({ variant: "outline" }), "gap-2")} type="button"><FileText className="h-4 w-4" />PDF mock</button>
+        <PrintButton />
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         {cards.map(([label, value]) => (

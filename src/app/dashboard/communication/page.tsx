@@ -16,7 +16,7 @@ import { requireSession } from "@/lib/auth";
 import { statusLabel, translateText, type Locale } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
-import { sendMockMessage } from "@/lib/services/notificationService";
+import { sendMessage } from "@/lib/services/notificationService";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 import { communicationSchema, incomingCommunicationSchema } from "@/lib/validations/engagement";
 import { formatDateTime } from "@/lib/utils";
@@ -92,18 +92,22 @@ async function sendMessageAction(formData: FormData) {
   }
 
   const branchId = await getWritableBranchId(session);
-  await sendMockMessage({
-    organizationId: session.organizationId,
-    branchId,
-    patientId,
-    to: payload.to,
-    message: payload.message,
-    subject: payload.subject || "Klinik bilgilendirmesi",
-    channel: payload.channel as CommunicationChannel
-  });
+  try {
+    await sendMessage({
+      organizationId: session.organizationId,
+      branchId,
+      patientId,
+      to: payload.to,
+      message: payload.message,
+      subject: payload.subject || "Klinik bilgilendirmesi",
+      channel: payload.channel as CommunicationChannel
+    });
+  } catch (error) {
+    redirect(resultUrl("error", error instanceof Error ? error.message : "Mesaj sağlayıcıya teslim edilemedi."));
+  }
 
   revalidatePath("/dashboard/communication");
-  redirect(resultUrl("success", "Giden mesaj mock olarak kaydedildi."));
+  redirect(resultUrl("success", "Giden mesaj sağlayıcıya teslim edildi."));
 }
 
 async function logIncomingMessageAction(formData: FormData) {
@@ -250,7 +254,7 @@ export default async function CommunicationPage(props: { searchParams: Promise<{
         <Card>
           <CardHeader>
             <CardTitle>Mesaj gönder</CardTitle>
-            <CardDescription>WhatsApp, SMS veya e-posta için mock gönderim kaydı oluşturur.</CardDescription>
+            <CardDescription>WhatsApp, SMS veya e-postayı yapılandırılmış canlı sağlayıcı üzerinden gönderir ve teslimat sonucunu kaydeder.</CardDescription>
           </CardHeader>
           <CardContent>
             <form action={sendMessageAction} className="grid gap-4 md:grid-cols-2">
@@ -283,7 +287,7 @@ export default async function CommunicationPage(props: { searchParams: Promise<{
                 <Label>Mesaj</Label>
                 <Textarea name="message" defaultValue={t("ClinicNova bilgilendirme mesajı.")} />
               </div>
-              <Button className="w-fit md:col-span-2" type="submit"><ArrowUpRight className="h-4 w-4" />Mock Gönder</Button>
+              <Button className="w-fit md:col-span-2" type="submit"><ArrowUpRight className="h-4 w-4" />Gönder</Button>
             </form>
           </CardContent>
         </Card>
@@ -410,7 +414,7 @@ export default async function CommunicationPage(props: { searchParams: Promise<{
       <Card>
         <CardHeader>
           <CardTitle>Gönderilen mesajlar</CardTitle>
-          <CardDescription>Kliniğin hastalara gönderdiği mock WhatsApp, SMS ve e-posta kayıtları.</CardDescription>
+          <CardDescription>Kliniğin hastalara yaptığı WhatsApp, SMS ve e-posta teslimatlarının doğrulanabilir kayıtları.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>

@@ -1,4 +1,5 @@
-import { IntegrationProvider } from "@prisma/client";
+import { IntegrationLogStatus, IntegrationProvider } from "@prisma/client";
+import { dispatchOutboundEvent } from "@/lib/integrations/outboundWebhook";
 import { writeIntegrationLog } from "@/lib/services/integrationLogService";
 
 type N8nEntity = {
@@ -8,38 +9,39 @@ type N8nEntity = {
   [key: string]: unknown;
 };
 
-async function mockN8n(eventType: string, entity: N8nEntity, responseJson: object = { ok: true, workflow: "mock" }) {
-  console.log(`[n8n:mock] ${eventType}`, entity.id);
+async function dispatchN8n(eventType: string, entity: N8nEntity) {
+  const result = await dispatchOutboundEvent(eventType, entity);
   return writeIntegrationLog({
     organizationId: entity.organizationId,
     branchId: entity.branchId,
     provider: IntegrationProvider.N8N,
     eventType,
     payloadJson: entity,
-    responseJson
+    responseJson: result,
+    status: result.ok ? IntegrationLogStatus.SUCCESS : IntegrationLogStatus.FAILED,
+    errorMessage: result.ok ? null : result.message
   });
 }
 
 export function sendLeadToN8n(lead: N8nEntity) {
-  return mockN8n("lead.created", lead, { ok: true, workflow: "lead-intake" });
+  return dispatchN8n("lead.created", lead);
 }
 
 export function sendPackageToN8n(tourismPackage: N8nEntity) {
-  return mockN8n("package.sent", tourismPackage, { ok: true, workflow: "package-delivery" });
+  return dispatchN8n("package.sent", tourismPackage);
 }
 
 export function shareReservationWithPartners(tourismPackage: N8nEntity, hotel?: N8nEntity | null, transfer?: N8nEntity | null) {
-  return mockN8n(
+  return dispatchN8n(
     "reservation.share",
-    { ...tourismPackage, hotelPartner: hotel, transferPartner: transfer },
-    { ok: true, workflow: "hotel-transfer-reservation" }
+    { ...tourismPackage, hotelPartner: hotel, transferPartner: transfer }
   );
 }
 
 export function triggerFollowUpWorkflow(lead: N8nEntity) {
-  return mockN8n("followup.trigger", lead, { ok: true, workflow: "3-7-14-followup" });
+  return dispatchN8n("followup.trigger", lead);
 }
 
 export function triggerReviewWorkflow(patient: N8nEntity) {
-  return mockN8n("review.trigger", patient, { ok: true, workflow: "review-request" });
+  return dispatchN8n("review.trigger", patient);
 }

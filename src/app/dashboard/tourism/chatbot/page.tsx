@@ -50,7 +50,7 @@ export default async function ChatbotPage(
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={Bot} title="AI Chatbot Mock" description="TR/EN sık soruları cevaplar, ciddi lead’i insana devreder ve lead kaydı oluşturur." />
+      <ModuleHeader icon={Bot} title="Akıllı Chatbot" description="TR/EN sık soruları güvenli yanıt kurallarıyla karşılar, ciddi lead’i insana devreder ve lead kaydı oluşturur." />
       {searchParams.error ? <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{searchParams.error}</div> : null}
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>

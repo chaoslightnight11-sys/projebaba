@@ -24,7 +24,7 @@ async function runNowAction() {
   const session = await requireSession();
   const result = await runDueFollowUps(session.organizationId);
   revalidatePath("/dashboard/tourism/followups");
-  redirect(resultUrl(`${result.processed} takip işlendi, ${result.sent} mesaj mock gönderildi.`));
+  redirect(resultUrl(`${result.processed} takip işlendi, ${result.sent} mesaj sağlayıcıya teslim edildi.`));
 }
 
 async function startLeadFollowUpAction(leadId: string) {

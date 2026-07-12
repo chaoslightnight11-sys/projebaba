@@ -1,0 +1,53 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: clinicnova
+          POSTGRES_PASSWORD: clinicnova
+          POSTGRES_DB: clinicnova_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clinicnova -d clinicnova_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://clinicnova:clinicnova@localhost:5432/clinicnova_test?schema=public
+      AUTH_SECRET: ci-auth-secret-at-least-48-characters-long-and-unique
+      NEXT_PUBLIC_APP_URL: https://clinicnova.example.test
+      CRON_SECRET: ci-cron-secret-at-least-32-characters-long
+      N8N_WEBHOOK_SECRET: ci-inbound-webhook-secret-at-least-32-characters
+      N8N_OUTBOUND_WEBHOOK_URL: https://automation.example.test/webhook/clinicnova
+      N8N_OUTBOUND_SECRET: ci-outbound-webhook-secret-at-least-32-characters
+      REQUIRE_LIVE_INTEGRATIONS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: npm run prisma:deploy
+      - run: npm run production:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

@@ -32,7 +32,7 @@ export default async function SurveysPage() {
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={HeartPulse} title="Hasta Memnuniyeti" description="Anket oluşturma, mock gönderim, 1-5 puanlama ve düşük skor takip listesi." />
+      <ModuleHeader icon={HeartPulse} title="Hasta Memnuniyeti" description="Anket oluşturma, 1-5 puanlama ve düşük skor takip listesi." />
       <div className="grid gap-4 md:grid-cols-3">
         <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Ortalama skor</p><p className="mt-2 text-3xl font-semibold">{average.toFixed(1)}</p></CardContent></Card>
         <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Yanıt</p><p className="mt-2 text-3xl font-semibold">{responses.length}</p></CardContent></Card>

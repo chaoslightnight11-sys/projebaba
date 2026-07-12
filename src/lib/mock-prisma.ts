@@ -600,6 +600,7 @@ const digitalConsents = leads.slice(0, 8).map((lead, index) => ({
   signerIp: index % 4 === 1 ? "127.0.0.1" : null,
   signerUserAgent: index % 4 === 1 ? "Mock Browser" : null,
   signatureData: index % 4 === 1 ? `signature-${lead.fullName}` : null,
+  sourceConsentId: null,
   createdAt: days(-index - 2),
   updatedAt: now
 }));
@@ -999,6 +1000,7 @@ const mockPrismaStore = {
   organization: model([organization]),
   branch: model(branches),
   user: model(users),
+  passwordResetToken: model([]),
   patient: model(patients, richPatient),
   patientFile: model([]),
   appointment: model(appointments, richAppointment),

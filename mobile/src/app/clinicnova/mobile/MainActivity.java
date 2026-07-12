@@ -74,7 +74,10 @@ public class MainActivity extends Activity {
         settings.setSupportZoom(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " ClinicNovaAndroid/1.0.1");
+        settings.setUserAgentString(settings.getUserAgentString() + " ClinicNovaAndroid/" + appVersion());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(true);
+        }
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -105,8 +108,13 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
-                if ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme)) {
+                if ("https".equalsIgnoreCase(scheme)) {
                     return false;
+                }
+                if ("file".equalsIgnoreCase(scheme) && uri.toString().startsWith("file:///android_asset/")) return false;
+                if ("http".equalsIgnoreCase(scheme)) {
+                    Toast.makeText(MainActivity.this, "Güvenli bağlantı için HTTPS gerekli.", Toast.LENGTH_SHORT).show();
+                    return true;
                 }
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, uri));
@@ -140,6 +148,15 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "İndirme bağlantısı açılamadı.", Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private String appVersion() {
+        try {
+            String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            return version == null ? "unknown" : version;
+        } catch (Exception ignored) {
+            return "unknown";
+        }
     }
 
     @Override

@@ -10,7 +10,7 @@ export default function IntegrationsPage() {
       <main className="container py-14">
         <div className="mb-10 max-w-3xl">
           <h1 className="text-4xl font-semibold tracking-normal">Entegrasyonlar</h1>
-          <p className="mt-4 text-lg text-muted-foreground">MVP’de tüm dış sistemler mock adapter olarak çalışır; gerçek API bağlantıları için interface yapısı hazırdır.</p>
+          <p className="mt-4 text-lg text-muted-foreground">WhatsApp, SMS, e-posta, ödeme, e-Fatura ve otomasyon olayları imzalı entegrasyon katmanı üzerinden yetkili sağlayıcılara yönlendirilir.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {integrations.map((integration) => (
@@ -23,7 +23,7 @@ export default function IntegrationsPage() {
                   <p className="font-medium">{integration}</p>
                   <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                     <CheckCircle2 className="h-3 w-3 text-primary" />
-                    Mock servis aktif
+                    Güvenli adapter hazır
                   </p>
                 </div>
               </CardContent>

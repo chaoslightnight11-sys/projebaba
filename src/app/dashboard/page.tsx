@@ -137,7 +137,7 @@ export default async function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-accent" />
-              AI asistan mock
+              Operasyon asistanı
             </CardTitle>
           </CardHeader>
           <CardContent>

@@ -9,14 +9,17 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { prisma } from "@/lib/prisma";
+import { redirectWithMessage } from "@/lib/redirect-url";
+import { allowServerAction } from "@/lib/server-action-rate-limit";
 import { careCheckSchema } from "@/lib/validations/tourism";
 
 async function submitCareCheckAction(formData: FormData) {
   "use server";
   const parsed = careCheckSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect(`/care-check/${String(formData.get("token") ?? "")}?error=Form geçersiz`);
+  if (!parsed.success) redirect(redirectWithMessage(`/care-check/${String(formData.get("token") ?? "")}`, "error", "Form geçersiz"));
+  if (!await allowServerAction(`care:${parsed.data.token}`, 12, 60 * 60 * 1000)) redirect(redirectWithMessage(`/care-check/${parsed.data.token}`, "error", "Çok fazla deneme. Lütfen daha sonra tekrar deneyin."));
   const followUp = await prisma.postTreatmentFollowUp.findFirst({ where: { publicToken: parsed.data.token } });
-  if (!followUp) redirect(`/care-check/${parsed.data.token}?error=Kayıt bulunamadı`);
+  if (!followUp) redirect(redirectWithMessage(`/care-check/${parsed.data.token}`, "error", "Kayıt bulunamadı"));
   const issue = parsed.data.status === "ISSUE";
   await prisma.postTreatmentFollowUp.update({
     where: { id: followUp.id },
@@ -27,12 +30,12 @@ async function submitCareCheckAction(formData: FormData) {
       painLevel: issue ? parsed.data.painLevel : null
     }
   });
-  if (issue) {
+  if (issue && !followUp.issueReported) {
     await prisma.notification.create({ data: { organizationId: followUp.organizationId, title: "Tedavi sonrası sorun bildirildi", message: parsed.data.issueDescription || "Hasta sorun bildirdi.", type: NotificationType.ISSUE, actionUrl: "/dashboard/tourism/post-treatment" } });
     await prisma.task.create({ data: { organizationId: followUp.organizationId, branchId: followUp.branchId, relatedPatientId: followUp.patientId, title: "Tedavi sonrası sorun kontrolü", description: parsed.data.issueDescription, priority: TaskPriority.URGENT, status: TaskStatus.TODO, dueDate: new Date() } });
   }
   revalidatePath("/dashboard/tourism/post-treatment");
-  redirect(`/care-check/${parsed.data.token}?success=${issue ? "Sorun bildiriminiz ekibe iletildi." : "Teşekkürler, kaydınız alındı."}`);
+  redirect(redirectWithMessage(`/care-check/${parsed.data.token}`, "success", issue ? "Sorun bildiriminiz ekibe iletildi." : "Teşekkürler, kaydınız alındı."));
 }
 
 export default async function CareCheckPage(

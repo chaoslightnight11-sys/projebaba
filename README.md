@@ -1,96 +1,75 @@
-# ClinicNova
+# ClinicNova 1.1
 
-ClinicNova, diş klinikleri için modern ve özgün bir klinik yönetim SaaS MVP'sidir. Next.js App Router, TypeScript, Tailwind, shadcn/ui uyumlu lokal bileşenler, Prisma ve PostgreSQL üzerine kuruludur.
+ClinicNova; diş klinikleri ve sağlık turizmi ekipleri için çok kiracılı hasta, randevu, finans, iletişim ve satış operasyonu platformudur. Next.js 15, TypeScript, Prisma ve PostgreSQL üzerinde çalışır; web ile Android istemcisi aynı canlı sistemi kullanır.
 
-## Kurulum
+## Başlıca yetenekler
+
+- Klinik ve şube bazlı kullanıcı/rol ayrımı, güvenli oturum ve audit log
+- Hasta, randevu, tedavi, tahsilat, stok, personel, rapor ve hasta portalı
+- Lead, teklif paketi, otel/transfer, takip, bakım, yorum, onam ve yayın galerisi
+- CSV/veri dışa aktarma, yazdırılabilir raporlar ve zaman damgalı elektronik onam
+- İmzalı n8n çıkışı ile WhatsApp, SMS, e-posta, ödeme ve e-belge sağlayıcı adaptörleri
+- Üretim hazırlık kontrolü, health/readiness uçları, migration, Docker ve GitHub Actions
+- Ayrı üretim/demo Android paketleri; üretim paketi yerel örnek hasta verisi içermez
+
+Canlı sağlayıcı yapılandırılmamışsa dış işlem başarı gibi gösterilmez. İlgili kayıt `FAILED` veya `DRAFT` kalır ve kullanıcı açık hata görür.
+
+## Yerel geliştirme
 
 ```bash
-npm install
-```
-
-`.env` oluşturun:
-
-```bash
+npm ci
 cp .env.example .env
-```
-
-Örnek `.env`:
-
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clinicnova?schema=public"
-AUTH_SECRET="change-this-development-secret-at-least-32-chars"
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
-```
-
-Prisma migration ve seed:
-
-```bash
+npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:seed
-```
-
-Geliştirme sunucusu:
-
-```bash
 npm run dev
 ```
 
-Uygulama varsayılan olarak `http://localhost:3000` üzerinde açılır.
-
-## Demo Kullanıcılar
+Demo bellek verisiyle çalışmak için yalnızca yerel/test ortamında `DEMO_MODE=true` kullanın. Demo kullanıcıları:
 
 - `owner@clinicnova.test / password123`
 - `doctor@clinicnova.test / password123`
 - `receptionist@clinicnova.test / password123`
 
-## Tamamlanan Özellikler
+## Doğrulama
 
-- Landing page: hero, özellikler, neden ClinicNova, entegrasyonlar ve fiyatlandırma
-- Sayfalar: `/features`, `/pricing`, `/integrations`, `/faq`, `/contact`, `/demo`, `/login`, `/register`
-- Custom JWT auth, HTTP-only cookie, middleware koruması
-- Multi-tenant Prisma mimarisi: `Organization`, `Branch`, `User`, rol alanı ve organization filtreleri
-- Dashboard layout: responsive sidebar, mobil drawer, global search, tema değiştirici
-- Dashboard metrikleri: bugünkü randevular, haftalık randevu, aylık gelir, bekleyen ödemeler, aktif/yeni hasta, stok uyarısı, memnuniyet, doktor performansı
-- CRUD başlangıçları: hasta, randevu, tedavi, tedavi planı, ödeme, stok, personel, onam, anket, iletişim ve recall
-- Raporlama: gelir, iptal/gelmeme oranı, stok tüketimi, memnuniyet, şube karşılaştırması, CSV export
-- AI Klinik Asistanı mock cevap servisi
-- Audit log, RBAC yardımcıları, KVKK veri dışa aktarma/silme mock yüzeyi
-- Loading, empty ve error state bileşenleri
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm audit
+```
 
-## Mock Entegrasyonlar
+## Üretim dağıtımı
 
-Adapter/interface yaklaşımıyla eklenen mock servisler:
+`.env.production.example` dosyasını temel alın; örnek değerleri gerçek secret, PostgreSQL, HTTPS alan adı ve sağlayıcı adresleriyle değiştirin.
 
-- `smsProvider.ts`
-- `whatsappProvider.ts`
-- `emailProvider.ts`
-- `paymentProvider.ts`
-- `eInvoiceProvider.ts`
-- `ePrescriptionProvider.ts`
-- `healthSystemProvider.ts`
+```bash
+npm ci
+npm run production:check
+npm run prisma:deploy
+npm run build
+npm run start:production
+```
 
-API uçları:
+- Canlılık: `GET /api/health`
+- Trafik hazırlığı: `GET /api/ready`
+- Üretim kılavuzu: [`docs/PRODUCTION.md`](docs/PRODUCTION.md)
+- Android kılavuzu: [`mobile/README.md`](mobile/README.md)
 
-- `POST /api/mock/ai`
-- `POST /api/mock/notify`
-- `POST /api/mock/payment`
-- `POST /api/mock/e-invoice`
-- `GET /api/reports/export`
+## Android
 
-## Mimari Notlar
+Sabit canlı sunuculu kurumsal APK:
 
-- Prisma sorguları servis katmanında organizationId ile filtrelenir.
-- Randevu oluşturma servisinde doktor saat çakışması kontrolü yapılır.
-- Form validasyonları Zod şemalarıyla tanımlanmıştır.
-- UI bileşenleri shadcn/ui stiline yakın lokal bileşenlerdir.
-- Gerçek entegrasyonlar için provider dosyaları adapter yüzeyi olarak ayrılmıştır.
+```bash
+MOBILE_MODE=production MOBILE_SERVER_URL=https://app.example.com npm run android:build
+npm run android:verify
+```
 
-## Sonraki Geliştirme Önerileri
+Sunucu adresi verilmezse üretim APK’sı ilk açılışta kullanıcıdan HTTPS ClinicNova adresini ister. Demo paketi ayrı ve açık biçimde üretilir: `MOBILE_MODE=demo npm run android:build`.
 
-- FullCalendar ile gerçek sürükle-bırak takvim
-- Server action sonuçları için inline hata/success state
-- Gerçek PDF export ve dijital imza akışı
-- Gerçek SMS/WhatsApp/e-Fatura/Sanal POS sağlayıcıları
-- Gelişmiş permission matrisi ve modül bazlı guard
-- Veri import sihirbazı
-- E2E testleri ve CI pipeline
+## Ticari kullanım sınırı
+
+Kaynak kodu gerçek işlem akışlarına ve üretim kontrollerine hazırdır. Gerçek mesajlaşma, ödeme, e-Fatura/e-Arşiv, nitelikli e-imza ve sağlık sistemi işlemlerinin aktif olması için işletme adına sağlayıcı sözleşmeleri, hukuki metinler ve üretim kimlik bilgileri gerekir. Secret değerleri depoya yazılmaz.

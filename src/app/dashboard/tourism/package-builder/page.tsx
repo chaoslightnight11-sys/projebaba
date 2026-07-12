@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Eye, Mail, PackagePlus, Send, Share2 } from "lucide-react";
-import { TourismLeadStatus, TourismPackageStatus } from "@prisma/client";
+import { PackagePlus, Send } from "lucide-react";
+import { IntegrationLogStatus, TourismLeadStatus, TourismPackageStatus } from "@prisma/client";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { PrintButton } from "@/components/ui/print-button";
 import { requireSession } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
@@ -56,7 +57,7 @@ async function createPackageAction(formData: FormData) {
       discount: payload.discount,
       finalPrice,
       currency: payload.currency,
-      packageStatus: TourismPackageStatus.SENT,
+      packageStatus: TourismPackageStatus.DRAFT,
       validUntil: payload.validUntil ? new Date(payload.validUntil) : null,
       notes: payload.notes || null,
       createdByUserId: session.userId
@@ -77,22 +78,30 @@ async function createPackageAction(formData: FormData) {
     }
   });
 
-  await prisma.lead.update({ where: { id: lead.id }, data: { leadStatus: TourismLeadStatus.PACKAGE_SENT, lastContactAt: new Date(), nextFollowUpAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) } });
-  await prisma.leadMessage.create({
-    data: {
-      organizationId: session.organizationId,
-      branchId: lead.branchId,
-      leadId: lead.id,
-      direction: "OUTBOUND",
-      channel: "WHATSAPP",
-      source: "package-builder",
-      subject: "Tedavi + otel + transfer paketi",
-      message: `${payload.packageTitle} paketi gönderildi. Public link: /package/${tourismPackage.publicToken}`
-    }
-  });
-  await sendPackageToN8n(tourismPackage);
+  const integration = await sendPackageToN8n(tourismPackage);
+  if (integration.status !== IntegrationLogStatus.SUCCESS) {
+    revalidatePath("/dashboard/tourism/package-builder");
+    redirect(resultUrl("error", "Paket taslak olarak kaydedildi ancak canlı gönderim başarısız oldu. Entegrasyon ayarlarını kontrol edin."));
+  }
+
+  await Promise.all([
+    prisma.tourismPackage.update({ where: { id: tourismPackage.id }, data: { packageStatus: TourismPackageStatus.SENT } }),
+    prisma.lead.update({ where: { id: lead.id }, data: { leadStatus: TourismLeadStatus.PACKAGE_SENT, lastContactAt: new Date(), nextFollowUpAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) } }),
+    prisma.leadMessage.create({
+      data: {
+        organizationId: session.organizationId,
+        branchId: lead.branchId,
+        leadId: lead.id,
+        direction: "OUTBOUND",
+        channel: "WHATSAPP",
+        source: "package-builder",
+        subject: "Tedavi + otel + transfer paketi",
+        message: `${payload.packageTitle} paketi gönderildi. Güvenli bağlantı: /package/${tourismPackage.publicToken}`
+      }
+    })
+  ]);
   revalidatePath("/dashboard/tourism/package-builder");
-  redirect(resultUrl("success", "Paket oluşturuldu, lead PACKAGE_SENT oldu ve n8n mock tetiklendi."));
+  redirect(resultUrl("success", "Paket oluşturuldu ve canlı entegrasyon sağlayıcısına teslim edildi."));
 }
 
 export default async function PackageBuilderPage(
@@ -141,14 +150,14 @@ export default async function PackageBuilderPage(
               <div className="space-y-2"><Label>Para birimi</Label><Select name="currency" defaultValue="EUR"><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="TRY">TRY</option></Select></div>
               <div className="space-y-2"><Label>Geçerlilik</Label><Input name="validUntil" type="date" /></div>
               <div className="space-y-2 md:col-span-2"><Label>Tedavi özeti</Label><Textarea name="treatmentSummary" defaultValue="Doktor değerlendirmesi sonrası tedavi süresi ve fiyat netleşir. Paket tedavi, otel ve havalimanı transferi içerir." /></div>
-              <div className="space-y-2 md:col-span-2"><Label>Notlar</Label><Textarea name="notes" defaultValue="Hasta kabul ederse otel ve transfer bilgisi n8n mock ile partnerlere paylaşılır." /></div>
+              <div className="space-y-2 md:col-span-2"><Label>Notlar</Label><Textarea name="notes" defaultValue="Hasta kabul ederse gerekli otel ve transfer bilgileri yetkili partnerlerle paylaşılır." /></div>
               <Button className="w-fit md:col-span-2" type="submit"><Send className="h-4 w-4" />Paketi Oluştur ve Gönder</Button>
             </form>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Canlı Paket Önizleme</CardTitle><CardDescription>Klinik logosu mock, hasta adı, tedavi özeti ve toplam fiyat görünümü.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Canlı Paket Önizleme</CardTitle><CardDescription>Klinik markası, hasta adı, tedavi özeti ve toplam fiyat görünümü.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-md border bg-background p-4">
               <div className="flex items-center justify-between">
@@ -163,12 +172,7 @@ export default async function PackageBuilderPage(
                 <div className="flex justify-between border-t pt-3 text-base"><span>Tahmini toplam</span><strong>{formatCurrency(4200 + Number(defaultHotel?.pricePerNight ?? 90) * 4 + Number(defaultTransfer?.basePrice ?? 60) * 2 - 250, locale)}</strong></div>
               </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Button variant="outline"><Eye className="h-4 w-4" />PDF Mock</Button>
-              <Button variant="outline"><Send className="h-4 w-4" />WhatsApp</Button>
-              <Button variant="outline"><Mail className="h-4 w-4" />E-posta</Button>
-              <Button variant="outline"><Share2 className="h-4 w-4" />n8n Paylaş</Button>
-            </div>
+            <div data-print-hidden="true"><PrintButton label="Önizlemeyi yazdır" /></div>
           </CardContent>
         </Card>
       </div>

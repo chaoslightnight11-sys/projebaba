@@ -8,6 +8,7 @@ export type ProviderResult = {
 export type MessagePayload = {
   to: string;
   message: string;
+  subject?: string;
   patientId?: string;
 };
 

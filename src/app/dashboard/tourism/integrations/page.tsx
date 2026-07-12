@@ -24,7 +24,7 @@ export default async function TourismIntegrationsPage() {
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={Building2} title="Entegrasyon Ayarları" description="Gerçek API yerine interface/adapter mimarisiyle çalışan mock n8n, Airtable, WhatsApp, Instagram ve yorum logları." />
+      <ModuleHeader icon={Building2} title="Entegrasyon Ayarları" description="İmzalı n8n çıkışları, tenant ayrımlı webhook'lar ve sağlayıcı teslimat logları." />
 
       <div className="grid gap-4 md:grid-cols-3">
         {endpoints.map((endpoint) => (
@@ -38,7 +38,7 @@ export default async function TourismIntegrationsPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Provider Durumu</CardTitle><CardDescription>Her mock çağrı IntegrationLog üretir.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Provider Durumu</CardTitle><CardDescription>Her canlı veya demo teslimat denemesi IntegrationLog üretir; başarısız çağrılar başarı gibi gösterilmez.</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
           {Object.values(IntegrationProvider).map((provider) => (
             <div key={provider} className="rounded-md border bg-background p-3">

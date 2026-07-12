@@ -156,7 +156,7 @@ export default async function TourismLeadsPage(
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Lead Detay Görünürlüğü</CardTitle><CardDescription>Detay drawer yerine MVP’de satış temsilcisinin ihtiyaç duyduğu bilgiler tablo altında özetlenir.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Lead Detay Görünürlüğü</CardTitle><CardDescription>Satış temsilcisinin ihtiyaç duyduğu iletişim ve ihtiyaç bilgileri tek görünümde özetlenir.</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtered.slice(0, 6).map((lead) => (
             <div key={lead.id} className="rounded-md border bg-background p-4">

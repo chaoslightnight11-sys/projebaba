@@ -1,10 +1,6 @@
 import type { ProviderResult } from "@/lib/integrations/types";
+import { dispatchOutboundEvent } from "@/lib/integrations/outboundWebhook";
 
 export async function sendEInvoice(invoiceNumber: string): Promise<ProviderResult> {
-  return {
-    ok: true,
-    provider: "mock-e-fatura",
-    reference: `efatura_${Date.now()}`,
-    message: `${invoiceNumber} numarali fatura mock e-Fatura sistemine gonderildi.`
-  };
+  return dispatchOutboundEvent("invoice.send", { invoiceNumber });
 }

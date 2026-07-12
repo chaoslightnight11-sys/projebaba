@@ -1,10 +1,12 @@
 import { CommunicationChannel } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { sendMockMessage } from "@/lib/services/notificationService";
+import { isDemoMode } from "@/lib/demo-mode";
+import { sendMessage } from "@/lib/services/notificationService";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 
 export async function POST(request: Request) {
+  if (!isDemoMode()) return NextResponse.json({ error: "Bu demo endpoint'i üretimde kapalıdır." }, { status: 404 });
   try {
     const session = await requireSession();
     const branchId = await getWritableBranchId(session);
@@ -15,7 +17,7 @@ export async function POST(request: Request) {
       channel?: CommunicationChannel;
     };
 
-    const result = await sendMockMessage({
+    const result = await sendMessage({
       organizationId: session.organizationId,
       branchId,
       patientId: payload.patientId,

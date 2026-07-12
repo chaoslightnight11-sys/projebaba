@@ -36,7 +36,7 @@ export default async function TourismSurveysPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Düşük Puan Uyarıları</CardTitle><CardDescription>Düşük puanda görev atama ve uyarı üretimi mock akışına bağlanır.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Düşük Puan Uyarıları</CardTitle><CardDescription>Düşük puanlar ekip takibi için görev ve uyarı akışına alınır.</CardDescription></CardHeader>
         <CardContent className="space-y-2">
           {lowScores.map((response) => {
             const patient = patients.find((item) => item.id === response.patientId);

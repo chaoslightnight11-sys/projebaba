@@ -12,6 +12,10 @@ export async function registerClinic(input: {
   email: string;
   password: string;
 }) {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+  if (existingUser) throw new Error("Bu e-posta adresiyle zaten bir hesap var.");
+
   const slug = input.clinicName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -39,7 +43,7 @@ export async function registerClinic(input: {
     const user = await tx.user.create({
       data: {
         name: input.fullName,
-        email: input.email.toLowerCase(),
+        email: normalizedEmail,
         passwordHash,
         role: Role.CLINIC_OWNER,
         organizationId: organization.id,

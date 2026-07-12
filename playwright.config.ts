@@ -26,7 +26,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: "DEMO_MODE=true AUTH_SECRET='e2e-secret-at-least-32-characters-long' AUTH_COOKIE_SECURE=false NEXT_PUBLIC_APP_URL='http://localhost:3100' npm run start -- --hostname 127.0.0.1 --port 3100",
+    command: "DEMO_MODE=true ALLOW_PRODUCTION_DEMO=true AUTH_SECRET='e2e-secret-at-least-32-characters-long-for-tests' CRON_SECRET='e2e-cron-secret-at-least-32-characters' AUTH_COOKIE_SECURE=false NEXT_PUBLIC_APP_URL='http://localhost:3100' npm run start -- --hostname 127.0.0.1 --port 3100",
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000

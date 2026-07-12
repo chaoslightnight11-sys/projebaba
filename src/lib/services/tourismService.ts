@@ -1,6 +1,7 @@
 import {
   CommunicationChannel,
   CommunicationDirection,
+  IntegrationLogStatus,
   IntegrationProvider,
   LeadFollowUpStatus,
   NotificationType,
@@ -17,6 +18,7 @@ import { syncLeadToAirtable, updateLeadInAirtable } from "@/lib/services/integra
 import { sendLeadToN8n, sendPackageToN8n, shareReservationWithPartners, triggerFollowUpWorkflow } from "@/lib/services/integrations/n8nProvider";
 import { writeAuditLog } from "@/lib/services/auditLogService";
 import { writeIntegrationLog } from "@/lib/services/integrationLogService";
+import { sendMessage } from "@/lib/services/notificationService";
 
 type IntakeLeadInput = {
   sourceChannel: TourismLeadSourceChannel | string;
@@ -143,7 +145,9 @@ export async function createOrUpdateLeadFromIntake(input: IntakeLeadInput, conte
 }
 
 export async function markLeadStatus(leadId: string, status: TourismLeadStatus, organizationId: string) {
-  const lead = await prisma.lead.update({ where: { id: leadId }, data: { leadStatus: status, lastContactAt: new Date() } });
+  const existing = await prisma.lead.findFirst({ where: { id: leadId, organizationId } });
+  if (!existing) throw new Error("Lead bulunamadı.");
+  const lead = await prisma.lead.update({ where: { id: existing.id }, data: { leadStatus: status, lastContactAt: new Date() } });
   await updateLeadInAirtable(lead);
   return lead;
 }
@@ -190,19 +194,33 @@ export async function shareReservation(packageId: string, organizationId: string
       transferPartnerId: transfer?.id ?? null,
       sharedVia: ReservationShareChannel.N8N,
       payloadJson: { packageId, hotel: hotel?.name, transfer: transfer?.name, airport: tourismPackage.arrivalAirport },
-      status: ReservationShareStatus.SENT
+      status: ReservationShareStatus.PENDING
     }
   });
 
-  await shareReservationWithPartners(tourismPackage, hotel, transfer);
-  return reservation;
+  const integration = await shareReservationWithPartners(tourismPackage, hotel, transfer);
+  return prisma.reservationShare.update({
+    where: { id: reservation.id },
+    data: { status: integration.status === IntegrationLogStatus.SUCCESS ? ReservationShareStatus.SENT : ReservationShareStatus.FAILED }
+  });
 }
 
 export async function acceptTourismPackage(publicToken: string) {
   const tourismPackage = await prisma.tourismPackage.findFirst({ where: { publicToken } });
   if (!tourismPackage) return null;
+  if (tourismPackage.packageStatus !== TourismPackageStatus.SENT && tourismPackage.packageStatus !== TourismPackageStatus.VIEWED) return null;
+  if (tourismPackage.validUntil && tourismPackage.validUntil < new Date()) {
+    await prisma.tourismPackage.update({ where: { id: tourismPackage.id }, data: { packageStatus: TourismPackageStatus.EXPIRED } });
+    return null;
+  }
 
-  const updatedPackage = await prisma.tourismPackage.update({ where: { id: tourismPackage.id }, data: { packageStatus: TourismPackageStatus.ACCEPTED } });
+  const claimed = await prisma.tourismPackage.updateMany({
+    where: { id: tourismPackage.id, packageStatus: { in: [TourismPackageStatus.SENT, TourismPackageStatus.VIEWED] } },
+    data: { packageStatus: TourismPackageStatus.ACCEPTED }
+  });
+  if (claimed.count !== 1) return null;
+  const updatedPackage = await prisma.tourismPackage.findFirst({ where: { id: tourismPackage.id, organizationId: tourismPackage.organizationId } });
+  if (!updatedPackage) return null;
   const lead = await prisma.lead.update({ where: { id: tourismPackage.leadId }, data: { leadStatus: TourismLeadStatus.BOOKED, lastContactAt: new Date() } });
 
   await prisma.notification.create({
@@ -224,7 +242,7 @@ export async function acceptTourismPackage(publicToken: string) {
       relatedLeadId: tourismPackage.leadId,
       relatedPatientId: tourismPackage.patientId ?? null,
       title: "BOOKED lead için rezervasyon paylaşımı",
-      description: "Hasta paketi kabul etti. Otel ve transfer bilgilerini n8n mock ile partnerlere paylaşın.",
+      description: "Hasta paketi kabul etti. Otel ve transfer bilgilerini yapılandırılmış entegrasyonla partnerlere paylaşın.",
       priority: TaskPriority.URGENT,
       status: TaskStatus.TODO,
       dueDate: new Date()
@@ -264,39 +282,80 @@ export async function runDueFollowUps(organizationId?: string) {
     if (!step) continue;
     const message = step.messageTemplate.replaceAll("{{name}}", lead.fullName);
 
-    await prisma.leadMessage.create({
-      data: {
-        leadId: lead.id,
+    const channel = step.channel === "EMAIL" ? CommunicationChannel.EMAIL : step.channel === "SMS" ? CommunicationChannel.SMS : CommunicationChannel.WHATSAPP;
+    const destination = channel === CommunicationChannel.EMAIL ? lead.email : lead.phone;
+    if (!destination || !lead.branchId) {
+      await prisma.leadFollowUp.update({ where: { id: followUp.id }, data: { status: LeadFollowUpStatus.PAUSED } });
+      await writeIntegrationLog({
         organizationId: lead.organizationId,
         branchId: lead.branchId,
-        direction: CommunicationDirection.OUTBOUND,
-        channel: step.channel === "EMAIL" ? CommunicationChannel.EMAIL : step.channel === "SMS" ? CommunicationChannel.SMS : CommunicationChannel.WHATSAPP,
-        source: "auto-followup",
+        provider: channel === CommunicationChannel.EMAIL ? IntegrationProvider.EMAIL : channel === CommunicationChannel.SMS ? IntegrationProvider.SMS : IntegrationProvider.WHATSAPP,
+        eventType: "followup.failed",
+        payloadJson: { leadId: lead.id, followUpId: followUp.id, channel },
+        responseJson: { ok: false },
+        status: IntegrationLogStatus.FAILED,
+        errorMessage: "İletişim adresi veya şube bilgisi eksik."
+      });
+      continue;
+    }
+
+    try {
+      const delivery = await sendMessage({
+        organizationId: lead.organizationId,
+        branchId: lead.branchId,
+        to: destination,
+        message,
         subject: `${step.dayOffset}. gün follow-up`,
-        message
-      }
-    });
+        channel
+      });
 
-    const nextStep = followUp.currentStep + 1;
-    await prisma.leadFollowUp.update({
-      where: { id: followUp.id },
-      data: {
-        currentStep: nextStep,
-        lastMessageAt: new Date(),
-        nextRunAt: steps[nextStep] ? new Date(Date.now() + Number(steps[nextStep].dayOffset) * 24 * 60 * 60 * 1000) : new Date(),
-        status: steps[nextStep] ? LeadFollowUpStatus.ACTIVE : LeadFollowUpStatus.COMPLETED
-      }
-    });
+      await prisma.leadMessage.create({
+        data: {
+          leadId: lead.id,
+          organizationId: lead.organizationId,
+          branchId: lead.branchId,
+          direction: CommunicationDirection.OUTBOUND,
+          channel,
+          source: "auto-followup",
+          subject: `${step.dayOffset}. gün follow-up`,
+          message
+        }
+      });
 
-    await writeIntegrationLog({
-      organizationId: lead.organizationId,
-      branchId: lead.branchId,
-      provider: step.channel === "EMAIL" ? IntegrationProvider.EMAIL : step.channel === "SMS" ? IntegrationProvider.SMS : IntegrationProvider.WHATSAPP,
-      eventType: "followup.sent",
-      payloadJson: { leadId: lead.id, followUpId: followUp.id, message },
-      responseJson: { queued: true, mode: "mock" }
-    });
-    sent += 1;
+      const nextStep = followUp.currentStep + 1;
+      await prisma.leadFollowUp.update({
+        where: { id: followUp.id },
+        data: {
+          currentStep: nextStep,
+          lastMessageAt: new Date(),
+          nextRunAt: steps[nextStep] ? new Date(Date.now() + Number(steps[nextStep].dayOffset) * 24 * 60 * 60 * 1000) : new Date(),
+          status: steps[nextStep] ? LeadFollowUpStatus.ACTIVE : LeadFollowUpStatus.COMPLETED
+        }
+      });
+
+      await writeIntegrationLog({
+        organizationId: lead.organizationId,
+        branchId: lead.branchId,
+        provider: channel === CommunicationChannel.EMAIL ? IntegrationProvider.EMAIL : channel === CommunicationChannel.SMS ? IntegrationProvider.SMS : IntegrationProvider.WHATSAPP,
+        eventType: "followup.sent",
+        payloadJson: { leadId: lead.id, followUpId: followUp.id, channel },
+        responseJson: delivery,
+        status: IntegrationLogStatus.SUCCESS
+      });
+      sent += 1;
+    } catch (error) {
+      await prisma.leadFollowUp.update({ where: { id: followUp.id }, data: { nextRunAt: new Date(Date.now() + 60 * 60 * 1000) } });
+      await writeIntegrationLog({
+        organizationId: lead.organizationId,
+        branchId: lead.branchId,
+        provider: channel === CommunicationChannel.EMAIL ? IntegrationProvider.EMAIL : channel === CommunicationChannel.SMS ? IntegrationProvider.SMS : IntegrationProvider.WHATSAPP,
+        eventType: "followup.failed",
+        payloadJson: { leadId: lead.id, followUpId: followUp.id, channel },
+        responseJson: { ok: false },
+        status: IntegrationLogStatus.FAILED,
+        errorMessage: error instanceof Error ? error.message : "Takip mesajı gönderilemedi."
+      });
+    }
   }
 
   return { processed: due.length, sent };

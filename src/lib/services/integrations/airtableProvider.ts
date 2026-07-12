@@ -1,4 +1,5 @@
-import { IntegrationProvider } from "@prisma/client";
+import { IntegrationLogStatus, IntegrationProvider } from "@prisma/client";
+import { dispatchOutboundEvent } from "@/lib/integrations/outboundWebhook";
 import { writeIntegrationLog } from "@/lib/services/integrationLogService";
 
 type AirtableLead = {
@@ -9,38 +10,28 @@ type AirtableLead = {
   leadStatus?: string;
 };
 
-export async function syncLeadToAirtable(lead: AirtableLead) {
-  console.log("[airtable:mock] sync lead", lead.id);
+async function dispatchAirtable(eventType: string, lead: AirtableLead) {
+  const result = await dispatchOutboundEvent(eventType, { ...lead });
   return writeIntegrationLog({
     organizationId: lead.organizationId,
     branchId: lead.branchId,
     provider: IntegrationProvider.AIRTABLE,
-    eventType: "lead.sync",
+    eventType,
     payloadJson: lead,
-    responseJson: { ok: true, table: "Leads", mode: "mock" }
+    responseJson: result,
+    status: result.ok ? IntegrationLogStatus.SUCCESS : IntegrationLogStatus.FAILED,
+    errorMessage: result.ok ? null : result.message
   });
+}
+
+export async function syncLeadToAirtable(lead: AirtableLead) {
+  return dispatchAirtable("airtable.lead.sync", lead);
 }
 
 export async function updateLeadInAirtable(lead: AirtableLead) {
-  console.log("[airtable:mock] update lead", lead.id);
-  return writeIntegrationLog({
-    organizationId: lead.organizationId,
-    branchId: lead.branchId,
-    provider: IntegrationProvider.AIRTABLE,
-    eventType: "lead.update",
-    payloadJson: lead,
-    responseJson: { ok: true, table: "Leads", mode: "mock" }
-  });
+  return dispatchAirtable("airtable.lead.update", lead);
 }
 
 export async function syncLeadStatus(leadId: string, status: string, organizationId: string, branchId?: string | null) {
-  console.log("[airtable:mock] sync status", leadId, status);
-  return writeIntegrationLog({
-    organizationId,
-    branchId,
-    provider: IntegrationProvider.AIRTABLE,
-    eventType: "lead.status",
-    payloadJson: { leadId, status },
-    responseJson: { ok: true, mode: "mock" }
-  });
+  return dispatchAirtable("airtable.lead.status", { id: leadId, leadStatus: status, organizationId, branchId });
 }

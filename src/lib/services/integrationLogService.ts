@@ -22,7 +22,7 @@ export async function writeIntegrationLog(input: {
       provider: input.provider,
       eventType: input.eventType,
       payloadJson: jsonSafe(input.payloadJson),
-      responseJson: jsonSafe(input.responseJson ?? { ok: true, mode: "mock" }),
+      responseJson: jsonSafe(input.responseJson ?? { ok: true }),
       status: input.status ?? IntegrationLogStatus.SUCCESS,
       errorMessage: input.errorMessage ?? null
     }

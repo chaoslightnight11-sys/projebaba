@@ -1,32 +1,36 @@
 import { revalidatePath } from "next/cache";
 import { redirect, notFound } from "next/navigation";
 import { CheckCircle2, HelpCircle, Plane } from "lucide-react";
-import { CommunicationChannel, CommunicationDirection } from "@prisma/client";
+import { CommunicationChannel, CommunicationDirection, TourismPackageStatus } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
+import { redirectWithMessage } from "@/lib/redirect-url";
 import { acceptTourismPackage } from "@/lib/services/tourismService";
+import { allowServerAction } from "@/lib/server-action-rate-limit";
 import { publicQuestionSchema } from "@/lib/validations/tourism";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { packageStatusLabel, statusTone } from "@/lib/tourism";
 
 async function acceptAction(token: string) {
   "use server";
+  if (!await allowServerAction(`package-accept:${token}`, 8, 60 * 60 * 1000)) redirect(redirectWithMessage(`/package/${token}`, "error", "Çok fazla deneme. Lütfen daha sonra tekrar deneyin."));
   const result = await acceptTourismPackage(token);
-  if (!result) redirect(`/package/${token}?error=Paket bulunamadı`);
+  if (!result) redirect(redirectWithMessage(`/package/${token}`, "error", "Paket kabul edilemiyor; süresi dolmuş veya daha önce işlenmiş olabilir."));
   revalidatePath(`/package/${token}`);
-  redirect(`/package/${token}?success=Paket kabul edildi. Satış ekibi rezervasyon için sizinle iletişime geçecek.`);
+  redirect(redirectWithMessage(`/package/${token}`, "success", "Paket kabul edildi. Satış ekibi rezervasyon için sizinle iletişime geçecek."));
 }
 
 async function questionAction(formData: FormData) {
   "use server";
   const parsed = publicQuestionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect(`/package/${String(formData.get("token") ?? "")}?error=Soru mesajı geçersiz`);
+  if (!parsed.success) redirect(redirectWithMessage(`/package/${String(formData.get("token") ?? "")}`, "error", "Soru mesajı geçersiz"));
+  if (!await allowServerAction(`package-question:${parsed.data.token}`, 10, 60 * 60 * 1000)) redirect(redirectWithMessage(`/package/${parsed.data.token}`, "error", "Çok fazla mesaj gönderdiniz. Lütfen daha sonra tekrar deneyin."));
   const tourismPackage = await prisma.tourismPackage.findFirst({ where: { publicToken: parsed.data.token } });
-  if (!tourismPackage) redirect(`/package/${parsed.data.token}?error=Paket bulunamadı`);
+  if (!tourismPackage) redirect(redirectWithMessage(`/package/${parsed.data.token}`, "error", "Paket bulunamadı"));
   await prisma.leadMessage.create({
     data: {
       organizationId: tourismPackage.organizationId,
@@ -39,7 +43,7 @@ async function questionAction(formData: FormData) {
       message: parsed.data.message
     }
   });
-  redirect(`/package/${parsed.data.token}?success=Sorunuz satış ekibine iletildi.`);
+  redirect(redirectWithMessage(`/package/${parsed.data.token}`, "success", "Sorunuz satış ekibine iletildi."));
 }
 
 export default async function PublicPackagePage(
@@ -50,6 +54,15 @@ export default async function PublicPackagePage(
   const locale = await getLocale();
   const tourismPackage = await prisma.tourismPackage.findFirst({ where: { publicToken: params.publicToken } });
   if (!tourismPackage) notFound();
+  if (tourismPackage.packageStatus === TourismPackageStatus.DRAFT || tourismPackage.packageStatus === TourismPackageStatus.REJECTED) notFound();
+  const expired = tourismPackage.packageStatus === TourismPackageStatus.EXPIRED || Boolean(tourismPackage.validUntil && tourismPackage.validUntil < new Date());
+  if (expired && tourismPackage.packageStatus !== TourismPackageStatus.EXPIRED) {
+    await prisma.tourismPackage.update({ where: { id: tourismPackage.id }, data: { packageStatus: TourismPackageStatus.EXPIRED } });
+    tourismPackage.packageStatus = TourismPackageStatus.EXPIRED;
+  } else if (tourismPackage.packageStatus === TourismPackageStatus.SENT) {
+    await prisma.tourismPackage.update({ where: { id: tourismPackage.id }, data: { packageStatus: TourismPackageStatus.VIEWED } });
+    tourismPackage.packageStatus = TourismPackageStatus.VIEWED;
+  }
   const [lead, items] = await Promise.all([
     prisma.lead.findFirst({ where: { id: tourismPackage.leadId, organizationId: tourismPackage.organizationId } }),
     prisma.treatmentPackageItem.findMany({ where: { packageId: tourismPackage.id, organizationId: tourismPackage.organizationId } })
@@ -95,7 +108,7 @@ export default async function PublicPackagePage(
                 <div className="mt-2 flex justify-between text-lg"><span>Total</span><strong>{formatCurrency(tourismPackage.finalPrice, locale)}</strong></div>
               </div>
               <p className="text-xs text-muted-foreground">Valid until {tourismPackage.validUntil ? formatDate(tourismPackage.validUntil, locale) : "-"}</p>
-              <form action={acceptAction.bind(null, params.publicToken)}><Button className="w-full" type="submit"><CheckCircle2 className="h-4 w-4" />{isTr ? "Paketi Kabul Ediyorum" : "I Accept This Package"}</Button></form>
+              {tourismPackage.packageStatus === TourismPackageStatus.VIEWED ? <form action={acceptAction.bind(null, params.publicToken)}><Button className="w-full" type="submit"><CheckCircle2 className="h-4 w-4" />{isTr ? "Paketi Kabul Ediyorum" : "I Accept This Package"}</Button></form> : <p className="rounded-md border bg-muted p-3 text-sm">{tourismPackage.packageStatus === TourismPackageStatus.ACCEPTED ? (isTr ? "Bu paket kabul edildi." : "This package has been accepted.") : (isTr ? "Bu teklif artık kabul edilemiyor." : "This offer can no longer be accepted.")}</p>}
             </CardContent>
           </Card>
         </div>

@@ -39,7 +39,7 @@ export default async function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={CreditCard} title="Ödemeler" description="Hasta bazlı tahsilat, gider kaydı ve sanal POS mock akışı." />
+      <ModuleHeader icon={CreditCard} title="Ödemeler" description="Hasta bazlı tahsilat, gider kaydı, vade ve yapılandırılmış sanal POS akışı." />
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard title="Tahsil edilen" value={formatCurrency(finance.income, locale)} icon={WalletCards} tone="success" />
         <StatCard title="Kalan tahsilat" value={formatCurrency(finance.pending, locale)} icon={CreditCard} tone="warning" />

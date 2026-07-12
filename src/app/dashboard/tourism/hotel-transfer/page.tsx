@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Hotel, PlaneLanding, Share2, Truck } from "lucide-react";
-import { TourismCurrency } from "@prisma/client";
+import { ReservationShareStatus, TourismCurrency } from "@prisma/client";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,9 +80,11 @@ async function shareReservationAction(formData: FormData) {
   const hotelPartnerId = String(formData.get("hotelPartnerId") ?? "");
   const transferPartnerId = String(formData.get("transferPartnerId") ?? "");
   if (!packageId) redirect(resultUrl("error", "Paket seçin."));
-  await shareReservation(packageId, session.organizationId, hotelPartnerId || null, transferPartnerId || null);
+  const reservation = await shareReservation(packageId, session.organizationId, hotelPartnerId || null, transferPartnerId || null);
+  if (!reservation) redirect(resultUrl("error", "Paket veya partner kaydı bulunamadı."));
   revalidatePath("/dashboard/tourism/hotel-transfer");
-  redirect(resultUrl("success", "Otel ve transfer bilgisi n8n mock ile paylaşıldı."));
+  if (reservation.status === ReservationShareStatus.FAILED) redirect(resultUrl("error", "Partner paylaşımı başarısız oldu. Entegrasyon ayarlarını ve logları kontrol edin."));
+  redirect(resultUrl("success", "Otel ve transfer bilgisi yetkili partner entegrasyonuna teslim edildi."));
 }
 
 export default async function HotelTransferPage(props: { searchParams: Promise<{ success?: string; error?: string }> }) {
@@ -98,12 +100,12 @@ export default async function HotelTransferPage(props: { searchParams: Promise<{
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={Hotel} title="Otel & Transfer" description="BOOKED olan paketlerin otel ve havalimanı transfer bilgilerini n8n mock ile partnerlere paylaş." />
+      <ModuleHeader icon={Hotel} title="Otel & Transfer" description="BOOKED olan paketlerin gerekli otel ve havalimanı transfer bilgilerini yetkili partnerlere güvenle paylaş." />
       {searchParams.success ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{searchParams.success}</div> : null}
       {searchParams.error ? <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{searchParams.error}</div> : null}
 
       <Card>
-        <CardHeader><CardTitle>Rezervasyon Paylaş</CardTitle><CardDescription>Paket kabul edildiğinde otel/transfer firmalarına gönderilecek mock payload.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Rezervasyon Paylaş</CardTitle><CardDescription>Paket kabul edildiğinde yalnızca gerekli rezervasyon verileri imzalı entegrasyon olayıyla paylaşılır.</CardDescription></CardHeader>
         <CardContent>
           <form action={shareReservationAction} className="grid gap-4 md:grid-cols-4">
             <div className="space-y-2 md:col-span-2"><Label>Paket</Label><Select name="packageId">{packages.map((item) => <option key={item.id} value={item.id}>{item.packageTitle} · {packageStatusLabel(item.packageStatus, locale)}</option>)}</Select></div>

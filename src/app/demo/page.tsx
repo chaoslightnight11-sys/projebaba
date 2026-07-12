@@ -9,7 +9,7 @@ export default function DemoPage() {
       <main className="container grid gap-8 py-14 lg:grid-cols-[0.8fr_1.2fr]">
         <div>
           <h1 className="text-4xl font-semibold tracking-normal">Demo Talep Et</h1>
-          <p className="mt-4 text-lg text-muted-foreground">ClinicNova’nın hasta, randevu, finans, stok, rapor ve mock entegrasyon akışlarını sizin klinik senaryonuz üzerinden gösterelim.</p>
+          <p className="mt-4 text-lg text-muted-foreground">ClinicNova’nın hasta, randevu, finans, stok, rapor ve entegrasyon akışlarını sizin klinik senaryonuz üzerinden gösterelim.</p>
         </div>
         <Card>
           <CardHeader>

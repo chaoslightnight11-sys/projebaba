@@ -1,10 +1,6 @@
 import type { ProviderResult } from "@/lib/integrations/types";
+import { dispatchOutboundEvent } from "@/lib/integrations/outboundWebhook";
 
 export async function createEPrescription(patientName: string): Promise<ProviderResult> {
-  return {
-    ok: true,
-    provider: "mock-e-recete",
-    reference: `erecete_${Date.now()}`,
-    message: `${patientName} icin mock e-Recete referansi olusturuldu.`
-  };
+  return dispatchOutboundEvent("prescription.create", { patientName });
 }

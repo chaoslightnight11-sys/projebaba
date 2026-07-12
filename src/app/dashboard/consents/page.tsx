@@ -1,11 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ClipboardCheck, Download, Send } from "lucide-react";
-import { ConsentStatus } from "@prisma/client";
+import { ClipboardCheck, Send } from "lucide-react";
+import { CommunicationChannel, ConsentStatus, DigitalConsentStatus } from "@prisma/client";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PrintButton } from "@/components/ui/print-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -15,6 +17,7 @@ import { requireSession } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
+import { sendMessage } from "@/lib/services/notificationService";
 import { consentSchema } from "@/lib/validations/engagement";
 import { formatDateTime } from "@/lib/utils";
 
@@ -62,12 +65,51 @@ async function createConsentAction(formData: FormData) {
 async function sendConsentAction(id: string) {
   "use server";
   const session = await requireSession();
-  const result = await prisma.consent.updateMany({ where: { id, organizationId: session.organizationId }, data: { status: ConsentStatus.SENT } });
-  if (result.count === 0) {
-    redirect(resultUrl("error", "Gönderilecek onam bulunamadı."));
+  const consent = await prisma.consent.findFirst({ where: { id, organizationId: session.organizationId } });
+  if (!consent) redirect(resultUrl("error", "Gönderilecek onam bulunamadı."));
+  const patient = await prisma.patient.findFirst({ where: { id: consent.patientId, organizationId: session.organizationId } });
+  if (!patient) redirect(resultUrl("error", "Onam kaydının hastası bulunamadı."));
+
+  let digitalConsent = await prisma.digitalConsent.findFirst({ where: { sourceConsentId: consent.id, organizationId: session.organizationId } });
+  if (!digitalConsent) {
+    digitalConsent = await prisma.digitalConsent.create({
+      data: {
+        organizationId: session.organizationId,
+        branchId: consent.branchId,
+        patientId: patient.id,
+        templateId: `consent:${consent.id}`,
+        title: consent.templateName,
+        contentSnapshot: consent.content,
+        language: "TR",
+        publicToken: randomUUID(),
+        status: DigitalConsentStatus.DRAFT,
+        sourceConsentId: consent.id
+      }
+    });
   }
+
+  const link = new URL(`/consent/${digitalConsent.publicToken}`, process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").toString();
+  try {
+    await sendMessage({
+      organizationId: session.organizationId,
+      branchId: consent.branchId,
+      patientId: patient.id,
+      to: patient.phone,
+      message: `Merhaba ${patient.firstName}, ${consent.templateName} onam metnini inceleyip güvenli bağlantıdan onaylayabilirsiniz: ${link}`,
+      channel: CommunicationChannel.WHATSAPP,
+      subject: consent.templateName
+    });
+  } catch (error) {
+    redirect(resultUrl("error", error instanceof Error ? error.message : "Onam bağlantısı gönderilemedi."));
+  }
+
+  await Promise.all([
+    prisma.consent.update({ where: { id: consent.id }, data: { status: ConsentStatus.SENT } }),
+    prisma.digitalConsent.update({ where: { id: digitalConsent.id }, data: { status: DigitalConsentStatus.SENT } })
+  ]);
   revalidatePath("/dashboard/consents");
-  redirect(resultUrl("success", "İmza gönderimi mock olarak kaydedildi."));
+  revalidatePath("/dashboard/tourism/consents");
+  redirect(resultUrl("success", "Tekil onam bağlantısı hastaya teslim edildi."));
 }
 
 export default async function ConsentsPage(props: { searchParams: Promise<{ success?: string; error?: string }> }) {
@@ -81,7 +123,8 @@ export default async function ConsentsPage(props: { searchParams: Promise<{ succ
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={ClipboardCheck} title="Dijital Onam" description="Onam şablonu, içerik düzenleme, imza gönderimi ve PDF mock export." />
+      <ModuleHeader icon={ClipboardCheck} title="Dijital Onam" description="Onam metni, tekil güvenli bağlantı, imza zaman damgası ve yazdırılabilir kayıt." />
+      <div data-print-hidden="true"><PrintButton label="Onam listesini yazdır" /></div>
       {searchParams.success ? (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">{searchParams.success}</div>
       ) : null}
@@ -113,7 +156,6 @@ export default async function ConsentsPage(props: { searchParams: Promise<{ succ
                   <TableCell>{formatDateTime(consent.timestamp, locale)}</TableCell>
                   <TableCell className="flex justify-end gap-2">
                     <form action={sendConsentAction.bind(null, consent.id)}><Button type="submit" variant="outline" size="sm"><Send className="h-4 w-4" />İmza gönder</Button></form>
-                    <Button type="button" variant="outline" size="sm"><Download className="h-4 w-4" />PDF mock</Button>
                   </TableCell>
                 </TableRow>
               ))}

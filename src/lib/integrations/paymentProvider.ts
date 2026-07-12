@@ -1,12 +1,8 @@
 import type { PaymentPayload, PaymentProvider, ProviderResult } from "@/lib/integrations/types";
+import { dispatchOutboundEvent } from "@/lib/integrations/outboundWebhook";
 
 export const paymentProvider: PaymentProvider = {
   async charge(payload: PaymentPayload): Promise<ProviderResult> {
-    return {
-      ok: true,
-      provider: "mock-virtual-pos",
-      reference: `pos_${Date.now()}`,
-      message: `${payload.amount} ${payload.currency} tutarinda mock odeme basarili.`
-    };
+    return dispatchOutboundEvent("payment.charge", { ...payload });
   }
 };

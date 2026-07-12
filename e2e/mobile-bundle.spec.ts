@@ -11,9 +11,12 @@ test("bundled Android interface works offline", async ({ page }) => {
   });
   page.on("pageerror", (error) => errors.push(error.message));
 
+  await page.addInitScript(() => {
+    (window as typeof window & { CLINICNOVA_MOBILE_CONFIG?: { mode: string; serverUrl: string } }).CLINICNOVA_MOBILE_CONFIG = { mode: "demo", serverUrl: "" };
+  });
   await page.goto(mobileUrl);
   await expect(page.getByRole("heading", { name: "Kliniğiniz cebinizde." })).toBeVisible();
-  await page.getByRole("button", { name: "Giriş Yap" }).click();
+  await page.getByRole("button", { name: "Demo girişi" }).click();
   await expect(page.getByRole("heading", { name: /Günaydın/ })).toBeVisible();
 
   await page.getByRole("button", { name: /Gelir fırsatları hazır/ }).click();
@@ -27,8 +30,11 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Hastalar", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Hastalar" })).toBeVisible();
   await page.getByRole("button", { name: "Hasta ekle" }).click();
-  await page.getByLabel("Ad soyad").fill("Tuna Akın");
-  await page.getByLabel("Telefon").fill("+90 555 000 00 00");
+  const patientForm = page.locator("#patientForm");
+  await patientForm.locator('input[name="name"]').fill("Tuna Akın");
+  await patientForm.locator('input[name="phone"]').fill("+90 555 000 00 00");
+  await expect(patientForm.locator('input[name="name"]')).toHaveValue("Tuna Akın");
+  await expect(patientForm.locator('input[name="phone"]')).toHaveValue("+90 555 000 00 00");
   await page.getByRole("button", { name: "Hastayı kaydet" }).click();
   await expect(page.locator("#patientList").getByText("Tuna Akın", { exact: true })).toBeVisible();
 
@@ -53,4 +59,17 @@ test("bundled Android interface works offline", async ({ page }) => {
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   expect(errors).toEqual([]);
+});
+
+test("production Android bootstrap requires a secure ClinicNova server", async ({ page }) => {
+  await page.goto(mobileUrl);
+  await expect(page.getByRole("heading", { name: "Kliniğinizi güvenle bağlayın." })).toBeVisible();
+  await expect(page.getByLabel("ClinicNova sunucu adresi")).toBeVisible();
+  await expect(page.getByLabel("E-posta")).toBeHidden();
+  await expect(page.getByLabel("Şifre")).toBeHidden();
+
+  await page.getByLabel("ClinicNova sunucu adresi").fill("http://guvensiz.example.com");
+  await page.getByRole("button", { name: "Güvenli sisteme bağlan" }).click();
+  await expect(page.getByRole("status")).toContainText("Geçerli bir HTTPS ClinicNova adresi girin.");
+  await expect(page).toHaveURL(mobileUrl);
 });

@@ -95,6 +95,6 @@ export const tourismKpiTarget = {
   workflow: ["Lead", "Paket", "Follow-up", "Booked", "Rezervasyon", "Bakım", "Anket", "Yorum", "Galeri", "Analitik"]
 };
 
-export const gdprNotice = "KVKK/GDPR: Hasta onayı olmayan veri paylaşımı, galeri yayını veya partner rezervasyon aktarımı canlı sistemde engellenmelidir. Bu MVP demo amaçlı mock kayıt üretir.";
+export const gdprNotice = "KVKK/GDPR: Açık hasta onayı bulunmayan veri paylaşımı ve galeri yayını engellenir; yalnızca gerekli rezervasyon verileri yetkili partnerlere aktarılır.";
 
 export { ShieldCheck };

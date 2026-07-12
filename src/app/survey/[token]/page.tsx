@@ -7,19 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { prisma } from "@/lib/prisma";
+import { redirectWithMessage } from "@/lib/redirect-url";
+import { allowServerAction } from "@/lib/server-action-rate-limit";
 import { tourismSurveySubmitSchema } from "@/lib/validations/tourism";
 
 async function submitSurveyAction(formData: FormData) {
   "use server";
   const parsed = tourismSurveySubmitSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect(`/survey/${String(formData.get("token") ?? "")}?error=Anket formu geçersiz`);
+  if (!parsed.success) redirect(redirectWithMessage(`/survey/${String(formData.get("token") ?? "")}`, "error", "Anket formu geçersiz"));
+  if (!await allowServerAction(`survey:${parsed.data.token}`, 8, 60 * 60 * 1000)) redirect(redirectWithMessage(`/survey/${parsed.data.token}`, "error", "Çok fazla deneme. Lütfen daha sonra tekrar deneyin."));
   const tourismPackage = await prisma.tourismPackage.findFirst({ where: { publicToken: parsed.data.token } });
-  if (!tourismPackage?.patientId) redirect(`/survey/${parsed.data.token}?error=Hasta kaydı bulunamadı`);
+  if (!tourismPackage?.patientId) redirect(redirectWithMessage(`/survey/${parsed.data.token}`, "error", "Hasta kaydı bulunamadı"));
+  const existingResponse = await prisma.surveyResponse.findFirst({ where: { organizationId: tourismPackage.organizationId, packageId: tourismPackage.id } });
+  if (existingResponse) redirect(redirectWithMessage(`/survey/${parsed.data.token}`, "success", "Bu paket için anket cevabınız daha önce kaydedildi."));
   const [survey, template] = await Promise.all([
     prisma.survey.findFirst({ where: { organizationId: tourismPackage.organizationId } }),
     prisma.surveyTemplate.findFirst({ where: { organizationId: tourismPackage.organizationId, active: true } })
   ]);
-  if (!survey) redirect(`/survey/${parsed.data.token}?error=Anket şablonu bulunamadı`);
+  if (!survey) redirect(redirectWithMessage(`/survey/${parsed.data.token}`, "error", "Anket şablonu bulunamadı"));
   await prisma.surveyResponse.create({
     data: {
       organizationId: tourismPackage.organizationId,
@@ -38,7 +43,7 @@ async function submitSurveyAction(formData: FormData) {
       followUpNeeded: parsed.data.rating < 3 || parsed.data.npsScore < 7
     }
   });
-  redirect(`/survey/${parsed.data.token}?success=Teşekkürler, cevabınız kaydedildi.`);
+  redirect(redirectWithMessage(`/survey/${parsed.data.token}`, "success", "Teşekkürler, cevabınız kaydedildi."));
 }
 
 export default async function SurveyPage(
@@ -48,6 +53,7 @@ export default async function SurveyPage(
   const params = await props.params;
   const tourismPackage = await prisma.tourismPackage.findFirst({ where: { publicToken: params.token } });
   if (!tourismPackage) notFound();
+  const existingResponse = await prisma.surveyResponse.findFirst({ where: { organizationId: tourismPackage.organizationId, packageId: tourismPackage.id } });
 
   return (
     <main className="min-h-screen bg-background p-4 md:p-8">
@@ -61,7 +67,7 @@ export default async function SurveyPage(
           <CardContent>
             {searchParams.success ? <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{searchParams.success}</div> : null}
             {searchParams.error ? <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{searchParams.error}</div> : null}
-            <form action={submitSurveyAction} className="grid gap-4 md:grid-cols-2">
+            {!existingResponse ? <form action={submitSurveyAction} className="grid gap-4 md:grid-cols-2">
               <input type="hidden" name="token" value={params.token} />
               <div className="space-y-2"><Label>Genel memnuniyet 1-5</Label><Input name="rating" type="number" min={1} max={5} defaultValue={5} /></div>
               <div className="space-y-2"><Label>Doktor ilgisi 1-5</Label><Input name="doctor" type="number" min={1} max={5} defaultValue={5} /></div>
@@ -72,7 +78,7 @@ export default async function SurveyPage(
               <div className="space-y-2"><Label>NPS 0-10</Label><Input name="npsScore" type="number" min={0} max={10} defaultValue={10} /></div>
               <div className="space-y-2 md:col-span-2"><Label>Yorum</Label><Textarea name="comment" placeholder="Deneyiminizi yazın" /></div>
               <Button className="w-fit md:col-span-2" type="submit">Anketi Gönder</Button>
-            </form>
+            </form> : <p className="rounded-md border bg-muted p-4 text-sm">Bu paket için anket cevabı daha önce kaydedildi. Teşekkür ederiz.</p>}
           </CardContent>
         </Card>
       </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LoginForm } from "@/components/forms/login-form";
 import { MarketingNav } from "@/components/landing/marketing-nav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isDemoMode } from "@/lib/demo-mode";
 
 export default async function LoginPage(props: { searchParams: Promise<{ next?: string }> }) {
   const searchParams = await props.searchParams;
@@ -13,7 +14,7 @@ export default async function LoginPage(props: { searchParams: Promise<{ next?: 
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>ClinicNova giriş</CardTitle>
-            <p className="text-sm text-muted-foreground">Demo: owner@clinicnova.test / password123</p>
+            {isDemoMode() ? <p className="text-sm text-muted-foreground">Demo: owner@clinicnova.test / password123</p> : <p className="text-sm text-muted-foreground">Klinik hesabınızla güvenli giriş yapın.</p>}
           </CardHeader>
           <CardContent>
             <LoginForm nextPath={nextPath} />

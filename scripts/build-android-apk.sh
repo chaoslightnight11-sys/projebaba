@@ -16,6 +16,9 @@ VERSION_CORE="${VERSION_NAME%%-*}"
 IFS=. read -r VERSION_MAJOR VERSION_MINOR VERSION_PATCH <<< "$VERSION_CORE"
 VERSION_CODE=$((10#$VERSION_MAJOR * 10000 + 10#$VERSION_MINOR * 100 + 10#$VERSION_PATCH))
 OUTPUT_APK="$RELEASE_DIR/ClinicNova-$VERSION_NAME.apk"
+MOBILE_MODE="${MOBILE_MODE:-production}"
+MOBILE_SERVER_URL="${MOBILE_SERVER_URL:-}"
+PACKAGE_ASSETS="$BUILD_DIR/assets"
 
 for command in node aapt2 javac jar java zip zipalign apksigner keytool curl; do
   if ! command -v "$command" >/dev/null 2>&1; then
@@ -31,7 +34,9 @@ fi
 
 mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$RELEASE_DIR" "$SIGNING_DIR"
 find "$BUILD_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-mkdir -p "$BUILD_DIR/compiled" "$BUILD_DIR/generated" "$BUILD_DIR/classes" "$BUILD_DIR/dex"
+mkdir -p "$BUILD_DIR/compiled" "$BUILD_DIR/generated" "$BUILD_DIR/classes" "$BUILD_DIR/dex" "$PACKAGE_ASSETS"
+cp -R "$MOBILE_DIR/assets/." "$PACKAGE_ASSETS/"
+node "$ROOT_DIR/scripts/write-mobile-runtime-config.mjs" "$PACKAGE_ASSETS/runtime-config.js" "$MOBILE_MODE" "$MOBILE_SERVER_URL" "$VERSION_NAME"
 
 if [[ ! -f "$R8_JAR" ]]; then
   echo "R8/D8 $R8_VERSION indiriliyor..."
@@ -50,7 +55,7 @@ aapt2 link \
   --target-sdk-version 34 \
   --version-code "$VERSION_CODE" \
   --version-name "$VERSION_NAME" \
-  -A "$MOBILE_DIR/assets" \
+  -A "$PACKAGE_ASSETS" \
   "$BUILD_DIR/compiled/resources.zip"
 
 echo "Java ve DEX çıktıları oluşturuluyor..."

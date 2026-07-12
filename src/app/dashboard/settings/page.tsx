@@ -1,19 +1,44 @@
-import { Database, KeyRound, Languages, ShieldCheck, Settings } from "lucide-react";
+import { revalidatePath } from "next/cache";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, Database, Download, KeyRound, Languages, ShieldCheck, Settings } from "lucide-react";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireSession } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
+import { getProductionReadiness } from "@/lib/production-readiness";
 import { roleLabel } from "@/lib/rbac";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
+
+async function requestDataDeletionAction() {
+  "use server";
+  const session = await requireSession();
+  const existing = await prisma.auditLog.findFirst({
+    where: { organizationId: session.organizationId, action: "DATA_DELETION_REQUEST", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
+  });
+  if (!existing) {
+    await prisma.auditLog.create({
+      data: {
+        userId: session.userId,
+        action: "DATA_DELETION_REQUEST",
+        module: "privacy",
+        organizationId: session.organizationId,
+        branchId: session.branchId,
+        metadata: { status: "REVIEW_REQUIRED" }
+      }
+    });
+  }
+  revalidatePath("/dashboard/settings");
+}
 
 export default async function SettingsPage() {
   const session = await requireSession();
   const locale = await getLocale();
+  const readiness = getProductionReadiness();
   const [organization, branches, users, auditLogs] = await Promise.all([
     prisma.organization.findFirst({ where: { id: session.organizationId } }),
     prisma.branch.findMany({ where: { organizationId: session.organizationId }, orderBy: { name: "asc" } }),
@@ -23,7 +48,18 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={Settings} title="Ayarlar" description="Organization, branch, kullanıcı rolleri, audit log ve KVKK mock işlemleri." />
+      <ModuleHeader icon={Settings} title="Ayarlar" description="Klinik, şube, kullanıcı rolleri, üretim hazırlığı, audit log ve veri hakları." />
+      <Card className={readiness.ready ? "border-emerald-500/30" : "border-amber-500/40"}>
+        <CardHeader><CardTitle className="flex items-center gap-2">{readiness.ready ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <AlertTriangle className="h-5 w-5 text-amber-600" />}Üretim hazırlığı</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {readiness.checks.map((check) => (
+            <div key={check.key} className="rounded-md border bg-background p-3">
+              <div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{check.label}</p><Badge variant={check.state === "pass" ? "success" : check.state === "error" ? "danger" : "warning"}>{check.state === "pass" ? "Hazır" : check.state === "error" ? "Eksik" : "Uyarı"}</Badge></div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{check.detail}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <Card className="border-primary/25 bg-primary/5">
           <CardHeader><CardTitle className="flex items-center gap-2"><Languages className="h-5 w-5 text-primary" />Dil Tercihi</CardTitle></CardHeader>
@@ -43,8 +79,9 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" />KVKK</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <Button variant="outline" type="button">Veri dışa aktarma mock</Button>
-            <Button variant="outline" type="button">Veri silme isteği mock</Button>
+            <Link className={cn(buttonVariants({ variant: "outline" }), "w-full gap-2")} href="/api/account/export"><Download className="h-4 w-4" />Verileri dışa aktar</Link>
+            <form action={requestDataDeletionAction}><Button className="w-full" variant="outline" type="submit">Veri silme incelemesi iste</Button></form>
+            <p className="text-xs leading-5 text-muted-foreground">Silme talepleri audit log’a alınır; yasal saklama zorunlulukları incelendikten sonra yetkili yönetici tarafından sonuçlandırılır.</p>
           </CardContent>
         </Card>
         <Card>

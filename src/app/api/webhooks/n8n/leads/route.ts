@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createOrUpdateLeadFromIntake } from "@/lib/services/tourismService";
 import { tourismLeadSchema } from "@/lib/validations/tourism";
-import { isWebhookRequestAuthorized } from "@/lib/webhook-auth";
+import { getWebhookOrganizationSlug, isWebhookRequestAuthorized } from "@/lib/webhook-auth";
 
-async function getWebhookTenant() {
-  const organization = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+async function getWebhookTenant(request: Request) {
+  const slug = getWebhookOrganizationSlug(request);
+  if (!slug) throw new Error("X-ClinicNova-Organization tenant başlığı gerekli.");
+  const organization = await prisma.organization.findFirst({ where: { slug } });
   if (!organization) throw new Error("Organizasyon bulunamadı.");
   const branch = await prisma.branch.findFirst({ where: { organizationId: organization.id }, orderBy: { createdAt: "asc" } });
   if (!branch) throw new Error("Şube bulunamadı.");
@@ -19,7 +21,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = tourismLeadSchema.parse(await request.json());
-    const { organization, branch } = await getWebhookTenant();
+    const { organization, branch } = await getWebhookTenant(request);
     const result = await createOrUpdateLeadFromIntake(
       {
         ...payload,

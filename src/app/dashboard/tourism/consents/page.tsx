@@ -24,8 +24,8 @@ export default async function TourismConsentsPage() {
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={FileSignature} title="Turizm Dijital Onamları" description="Yurt dışı hasta için TR/EN demo onam, veri paylaşımı ve zaman damgası akışı." />
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{gdprNotice} Gerçek hukuki e-imza entegrasyonu sonradan eklenebilir.</div>
+      <ModuleHeader icon={FileSignature} title="Turizm Dijital Onamları" description="Yurt dışı hasta için TR/EN elektronik onam, veri paylaşımı ve zaman damgası akışı." />
+      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{gdprNotice} Nitelikli elektronik imza gereken işlemler için yetkili e-imza sağlayıcısı ayrıca yapılandırılmalıdır.</div>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>

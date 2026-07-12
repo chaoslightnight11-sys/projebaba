@@ -3,6 +3,8 @@
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const mobileConfig = window.CLINICNOVA_MOBILE_CONFIG || { mode: "production", serverUrl: "" };
+  const demoMode = mobileConfig.mode === "demo";
   const storage = {
     get(key, fallback) {
       try {
@@ -218,12 +220,17 @@
   }
 
   function openModal(eyebrow, title, content) {
+    const opener = document.activeElement;
     $("#modalEyebrow").textContent = eyebrow;
     $("#modalTitle").textContent = title;
     $("#modalBody").innerHTML = content;
     $("#modalBackdrop").hidden = false;
     document.body.style.overflow = "hidden";
-    setTimeout(() => ($("#modalBody input, #modalBody select, #modalBody button") || $("#modalClose"))?.focus(), 80);
+    setTimeout(() => {
+      if ($("#modalBackdrop").hidden) return;
+      if (document.activeElement !== opener && document.activeElement !== document.body) return;
+      ($("#modalBody input, #modalBody select, #modalBody button") || $("#modalClose"))?.focus();
+    }, 80);
   }
   function closeModal() {
     $("#modalBackdrop").hidden = true;
@@ -383,9 +390,62 @@
     $("#loginScreen").hidden = false;
   }
 
+  function normalizedServerUrl(value) {
+    const parsed = new URL(String(value || "").trim());
+    if (parsed.protocol !== "https:") throw new Error("HTTPS gerekli");
+    parsed.pathname = parsed.pathname.replace(/\/$/, "");
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.href.replace(/\/$/, "");
+  }
+
+  function connectToServer(value) {
+    try {
+      const serverUrl = normalizedServerUrl(value);
+      storage.set("clinicnova.serverUrl", serverUrl);
+      showToast("Güvenli ClinicNova sunucusu açılıyor…");
+      setTimeout(() => { window.location.href = `${serverUrl}/login?next=%2Fdashboard&mobile=android`; }, 350);
+      return true;
+    } catch {
+      showToast("Geçerli bir HTTPS ClinicNova adresi girin.");
+      return false;
+    }
+  }
+
+  function configureEntryMode() {
+    if (demoMode) {
+      $("#serverUrlField").hidden = true;
+      $("#serverUrl").required = false;
+      $("#demoLoginFields").hidden = false;
+      $("#loginEmail").required = true;
+      $("#loginPassword").required = true;
+      $("#loginEmail").value = "owner@clinicnova.test";
+      $("#loginPassword").value = "password123";
+      $("#loginTitle").textContent = "Kliniğiniz cebinizde.";
+      $("#loginDescription").textContent = "Bugünün operasyonunu, hastalarınızı ve tahsilat akışını çevrimdışı demo verileriyle deneyin.";
+      $("#loginSubmitLabel").textContent = "Demo girişi";
+      $("#loginSecureNote").textContent = "Demo kayıtları yalnızca cihazda tutulur; gerçek hasta verisi kullanmayın.";
+      return;
+    }
+
+    $("#serverUrlField").hidden = false;
+    $("#serverUrl").required = true;
+    $("#demoLoginFields").hidden = true;
+    $("#loginEmail").required = false;
+    $("#loginPassword").required = false;
+    const configuredUrl = mobileConfig.serverUrl || storage.get("clinicnova.serverUrl", "");
+    $("#serverUrl").value = configuredUrl;
+    const offlineFallback = new URLSearchParams(window.location.search).has("offline");
+    if (configuredUrl && !offlineFallback) connectToServer(configuredUrl);
+  }
+
   $("#todayLabel").textContent = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" }).format(today);
   $("#loginForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!demoMode) {
+      connectToServer($("#serverUrl").value);
+      return;
+    }
     const email = $("#loginEmail").value.trim();
     const password = $("#loginPassword").value;
     if (!email.includes("@") || password.length < 8) return showToast("E-posta ve şifreyi kontrol edin.");
@@ -484,16 +544,11 @@
     if (event.target.id === "connectionForm") {
       event.preventDefault();
       const url = new FormData(event.target).get("url").trim().replace(/\/$/, "");
-      try {
-        const parsed = new URL(url);
-        if (parsed.protocol !== "https:") throw new Error("HTTPS gerekli");
-        storage.set("clinicnova.serverUrl", parsed.href);
-        showToast("Canlı sistem açılıyor…");
-        setTimeout(() => { window.location.href = parsed.href; }, 450);
-      } catch { showToast("Geçerli bir HTTPS adresi girin."); }
+      connectToServer(url);
     }
   });
 
+  configureEntryMode();
   if (storage.get("clinicnova.theme", "light") === "dark") document.documentElement.classList.add("dark");
   $("#notificationDot").hidden = storage.get("clinicnova.notificationsRead", false);
   window.ClinicNovaBack = () => {
@@ -508,5 +563,5 @@
     return false;
   };
   updateNetworkBadge();
-  if (storage.get("clinicnova.session", null)) showApp(); else showLogin();
+  if (demoMode && storage.get("clinicnova.session", null)) showApp(); else showLogin();
 })();

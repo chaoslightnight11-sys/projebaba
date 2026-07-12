@@ -19,9 +19,9 @@ export async function getAiAssistantSuggestion(context: AiAssistantContext) {
 
   return {
     id: `ai_${Date.now()}`,
-    title: "AI Klinik Asistani",
+    title: "Klinik Operasyon Asistanı",
     answer: responses[context.topic],
     prompt: context.prompt ?? null,
-    mocked: true
+    mode: "rules" as const
   };
 }

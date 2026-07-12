@@ -14,7 +14,7 @@ type SendMessageInput = {
   subject?: string;
 };
 
-export async function sendMockMessage(input: SendMessageInput) {
+export async function sendMessage(input: SendMessageInput) {
   const provider =
     input.channel === CommunicationChannel.WHATSAPP
       ? whatsappProvider
@@ -22,7 +22,7 @@ export async function sendMockMessage(input: SendMessageInput) {
         ? smsProvider
         : emailProvider;
 
-  const result = await provider.send({ to: input.to, message: input.message, patientId: input.patientId });
+  const result = await provider.send({ to: input.to, message: input.message, subject: input.subject, patientId: input.patientId });
 
   await prisma.communicationLog.create({
     data: {
@@ -40,6 +40,10 @@ export async function sendMockMessage(input: SendMessageInput) {
       branchId: input.branchId
     }
   });
+
+  if (!result.ok) {
+    throw new Error(result.message || "İleti sağlayıcıya teslim edilemedi.");
+  }
 
   return result;
 }

@@ -15,7 +15,7 @@ import { intlLocale, statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { createAppointment, getAppointmentFormOptions, getAppointments } from "@/lib/services/appointmentService";
 import { getPortalAppointmentRequests, resolvePortalAppointmentRequest } from "@/lib/services/portalService";
-import { sendMockMessage } from "@/lib/services/notificationService";
+import { sendMessage } from "@/lib/services/notificationService";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 import { appointmentSchema } from "@/lib/validations/appointment";
 import { formatDateTime } from "@/lib/utils";
@@ -68,7 +68,7 @@ async function sendReminderAction(patientId: string, phone: string) {
   const session = await requireSession();
   const branchId = await getWritableBranchId(session);
   try {
-    await sendMockMessage({
+    await sendMessage({
       organizationId: session.organizationId,
       branchId,
       patientId,
@@ -81,7 +81,7 @@ async function sendReminderAction(patientId: string, phone: string) {
   }
 
   revalidatePath("/dashboard/communication");
-  redirect(resultUrl("success", "Randevu hatırlatması mock olarak gönderildi."));
+  redirect(resultUrl("success", "Randevu hatırlatması sağlayıcıya teslim edildi."));
 }
 
 function startOfDay(date: Date) {
@@ -108,7 +108,7 @@ export default async function AppointmentsPage(props: { searchParams: Promise<{ 
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={CalendarDays} title="Randevu Modülü" description="Takvim, liste, günlük/haftalık görünüm, doktor müsaitliği ve mock hatırlatma." />
+      <ModuleHeader icon={CalendarDays} title="Randevu Modülü" description="Takvim, liste, günlük/haftalık görünüm, doktor müsaitliği ve sağlayıcı destekli hatırlatma." />
 
       {searchParams.success ? (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">{searchParams.success}</div>
@@ -291,7 +291,7 @@ export default async function AppointmentsPage(props: { searchParams: Promise<{ 
       <Card>
         <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
           <BellRing className="h-5 w-5 text-primary" />
-          Sürükle-bırak takvim için FullCalendar adapter yeri ayrıldı; MVP’de hızlı ve stabil custom takvim görünümü kullanılıyor.
+          Günlük ve haftalık görünüm; doktor, oda ve durum bilgilerini hızlı planlama için birlikte gösterir.
         </CardContent>
       </Card>
     </div>

@@ -1,10 +1,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { GalleryHorizontalEnd, Sparkles, Upload } from "lucide-react";
-import { BeforeAfterStatus } from "@prisma/client";
+import Link from "next/link";
+import { GalleryHorizontalEnd, Upload } from "lucide-react";
+import { BeforeAfterStatus, ConsentStatus } from "@prisma/client";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +16,7 @@ import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
 import { gdprNotice, statusTone } from "@/lib/tourism";
+import { cn } from "@/lib/utils";
 
 function resultUrl(message: string) {
   return `/dashboard/tourism/gallery?success=${encodeURIComponent(message)}`;
@@ -24,29 +26,34 @@ async function publishCaseAction(id: string) {
   "use server";
   const session = await requireSession();
   const beforeAfterCase = await prisma.beforeAfterCase.findFirst({ where: { id, organizationId: session.organizationId } });
-  if (!beforeAfterCase || !beforeAfterCase.consentGiven) redirect(resultUrl("Onay olmayan vaka yayınlanamaz."));
+  if (!beforeAfterCase || !beforeAfterCase.consentGiven || !beforeAfterCase.consentId) redirect(resultUrl("İmzalı onamı olmayan vaka yayınlanamaz."));
+  const consent = await prisma.consent.findFirst({ where: { id: beforeAfterCase.consentId, organizationId: session.organizationId, status: ConsentStatus.SIGNED } });
+  if (!consent) redirect(resultUrl("Vakanın imzalı yayın onamı doğrulanamadı."));
   await prisma.beforeAfterCase.update({ where: { id }, data: { status: BeforeAfterStatus.PUBLISHED_WEBSITE } });
+  const organization = await prisma.organization.findFirst({ where: { id: session.organizationId } });
   revalidatePath("/dashboard/tourism/gallery");
-  redirect(resultUrl("Vaka web sitesi yayınına mock olarak hazırlandı."));
+  if (organization) revalidatePath(`/showcase/${organization.slug}`);
+  redirect(resultUrl("Vaka kliniğin herkese açık galerisinde yayınlandı."));
 }
 
 async function createCaseAction(formData: FormData) {
   "use server";
   const session = await requireSession();
-  const patients = await prisma.patient.findMany({ where: { organizationId: session.organizationId }, take: 1 });
-  const patient = patients[0];
-  if (!patient) redirect(resultUrl("Önce hasta kaydı gerekli."));
+  const consentId = String(formData.get("consentId") ?? "");
+  const consent = await prisma.consent.findFirst({ where: { id: consentId, organizationId: session.organizationId, status: ConsentStatus.SIGNED } });
+  if (!consent) redirect(resultUrl("Yayın için imzalı hasta onamı seçilmelidir."));
   await prisma.beforeAfterCase.create({
     data: {
       organizationId: session.organizationId,
-      branchId: patient.branchId,
-      patientId: patient.id,
+      branchId: consent.branchId,
+      patientId: consent.patientId,
       treatmentType: String(formData.get("treatmentType") ?? "Smile Design"),
       title: String(formData.get("title") ?? "Yeni vaka"),
       description: String(formData.get("description") ?? "") || null,
-      beforeImageUrl: String(formData.get("beforeImageUrl") ?? "https://placehold.co/640x420?text=Before"),
-      afterImageUrl: String(formData.get("afterImageUrl") ?? "https://placehold.co/640x420?text=After"),
-      consentGiven: formData.get("consentGiven") === "true",
+      beforeImageUrl: String(formData.get("beforeImageUrl") ?? ""),
+      afterImageUrl: String(formData.get("afterImageUrl") ?? ""),
+      consentGiven: true,
+      consentId: consent.id,
       country: String(formData.get("country") ?? "United Kingdom"),
       ageRange: String(formData.get("ageRange") ?? "35-44"),
       tags: String(formData.get("tags") ?? "smile-design").split(",").map((item) => item.trim()),
@@ -62,13 +69,18 @@ export default async function GalleryPage(props: { searchParams: Promise<{ succe
   const searchParams = await props.searchParams;
   const session = await requireSession();
   const locale = await getLocale();
-  const cases = await prisma.beforeAfterCase.findMany({ where: { organizationId: session.organizationId }, orderBy: { createdAt: "desc" }, take: 100 });
+  const [organization, cases, signedConsents] = await Promise.all([
+    prisma.organization.findFirst({ where: { id: session.organizationId } }),
+    prisma.beforeAfterCase.findMany({ where: { organizationId: session.organizationId }, orderBy: { createdAt: "desc" }, take: 100 }),
+    prisma.consent.findMany({ where: { organizationId: session.organizationId, status: ConsentStatus.SIGNED }, include: { patient: true }, orderBy: { signedAt: "desc" }, take: 100 })
+  ]);
   const treatments = [...new Set(cases.map((item) => item.treatmentType))];
   const filtered = searchParams.treatment ? cases.filter((item) => item.treatmentType === searchParams.treatment) : cases;
 
   return (
     <div className="space-y-6">
       <ModuleHeader icon={GalleryHorizontalEnd} title="Önce/Sonra Galerisi" description="Onaylı vaka fotoğraflarını tedavi türüne göre yayın ve sosyal medya için hazırla." />
+      {organization ? <div data-print-hidden="true"><Link className={cn(buttonVariants({ variant: "outline" }))} href={`/showcase/${organization.slug}`}>Herkese açık galeriyi görüntüle</Link></div> : null}
       {searchParams.success ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{searchParams.success}</div> : null}
       <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{gdprNotice}</div>
 
@@ -79,11 +91,11 @@ export default async function GalleryPage(props: { searchParams: Promise<{ succe
             <Input name="title" placeholder="Vaka başlığı" required />
             <Select name="treatmentType" defaultValue="Hollywood Smile"><option>Dental Implant</option><option>Hollywood Smile</option><option>Veneers</option><option>Teeth Whitening</option><option>Zirconium Crown</option></Select>
             <Input name="country" defaultValue="United Kingdom" />
-            <Input name="beforeImageUrl" defaultValue="https://placehold.co/640x420?text=Before" />
-            <Input name="afterImageUrl" defaultValue="https://placehold.co/640x420?text=After" />
+            <Input name="beforeImageUrl" type="url" placeholder="https://.../before.jpg" required />
+            <Input name="afterImageUrl" type="url" placeholder="https://.../after.jpg" required />
             <Input name="ageRange" defaultValue="35-44" />
             <Input name="tags" defaultValue="smile-design, tourism" />
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="consentGiven" value="true" /> Hasta yayın onayı var</label>
+            <Select name="consentId" required><option value="">İmzalı yayın onamı seçin</option>{signedConsents.map((consent) => <option key={consent.id} value={consent.id}>{consent.patient.firstName} {consent.patient.lastName} · {consent.templateName}</option>)}</Select>
             <Textarea name="privacyNotes" defaultValue="Yüz görünürlüğü ve KVKK/GDPR izni kontrol edildi." />
             <Textarea name="description" className="md:col-span-3" placeholder="Vaka açıklaması" />
             <Button className="w-fit md:col-span-3" type="submit"><Upload className="h-4 w-4" />Vaka Ekle</Button>
@@ -120,7 +132,6 @@ export default async function GalleryPage(props: { searchParams: Promise<{ succe
                 <Badge variant="default">{item.ageRange ?? "-"}</Badge>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm"><Sparkles className="h-4 w-4" />AI Açıklama Mock</Button>
                 <form action={publishCaseAction.bind(null, item.id)}><Button size="sm" disabled={!item.consentGiven}>Web’de Yayınla</Button></form>
               </div>
             </CardContent>
