@@ -64,6 +64,15 @@ test("bundled Android interface works offline", async ({ page }) => {
   await expect(page.locator("#patientList").getByText("Tuna Akın", { exact: true })).toBeVisible();
 
   await page.locator("#patientList").getByRole("button", { name: /Tuna Akın/ }).click();
+  await expect(page.getByText("Geçmiş tedaviler", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ödeme geçmişi", { exact: true })).toBeVisible();
+  await expect(page.getByText("Before / After fotoğrafları", { exact: true })).toBeVisible();
+  await page.locator('input[data-media-kind="Before"]').setInputFiles({
+    name: "before.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")
+  });
+  await expect(page.getByText(/Before · Şimdi/)).toBeVisible();
   await page.getByRole("button", { name: "Yeni randevu oluştur" }).click();
   await expect(page.getByRole("combobox", { name: "Hasta", exact: true }).locator("option:checked")).toHaveText("Tuna Akın");
   await page.getByRole("button", { name: "Randevuyu kaydet" }).click();
@@ -72,10 +81,17 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Ana Sayfa", exact: true }).click();
   await page.getByRole("button", { name: "Ödeme al" }).click();
   await page.getByRole("combobox", { name: "Hasta", exact: true }).selectOption({ label: "Tuna Akın" });
-  await page.getByLabel("Tutar").fill("1250");
+  await page.getByLabel("İşlem 1").fill("İmplant");
+  await page.getByLabel("Bedeli").first().fill("30000");
+  await page.getByLabel("İşlem 2").fill("Kemik grefti");
+  await page.getByLabel("Bedeli").nth(1).fill("5000");
+  await page.getByLabel("Şimdi alınan").fill("1250");
   await page.getByRole("button", { name: "Ödemeyi kaydet" }).click();
   await expect(page.getByRole("heading", { name: "Tahsilat merkezi" })).toBeVisible();
   await expect(page.locator("#transactionList").getByText("Tuna Akın", { exact: true })).toBeVisible();
+  await expect(page.locator("#transactionList")).toContainText("İmplant");
+  await expect(page.locator("#transactionList")).toContainText("Kemik grefti");
+  await expect(page.locator("#transactionList")).toContainText("Kalan");
 
   await page.getByRole("button", { name: "Ana Sayfa", exact: true }).click();
   await page.getByRole("button", { name: "Bildirimler" }).click();

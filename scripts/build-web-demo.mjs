@@ -17,7 +17,7 @@ await copyFile(path.join(root, ".openai", "hosting.json"), path.join(dist, ".ope
 const html = await readFile(htmlPath, "utf8");
 const worker = `const html = ${JSON.stringify(html)};
 
-export default {
+const workerApp = {
   async fetch() {
     return new Response(html, {
       headers: {
@@ -29,6 +29,8 @@ export default {
     });
   }
 };
+
+export default workerApp;
 `;
 await writeFile(path.join(dist, "server", "index.js"), worker, "utf8");
 

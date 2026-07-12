@@ -37,7 +37,7 @@
     { id: 5, patientId: 4, date: tomorrowIso, time: "11:00", duration: 45, treatment: "Ortodonti", doctor: "Dr. Lara Er", room: "Koltuk 2", status: "PLANNED" }
   ];
   const defaultTransactions = [
-    { id: 1, patientId: 1, name: "Ayşe Yılmaz", detail: "İmplant · Kart", amount: 18500, type: "income", status: "PAID", date: "Bugün, 11:24" },
+    { id: 1, patientId: 1, name: "Ayşe Yılmaz", detail: "İmplant · Kart", amount: 18500, totalAmount: 42000, remainingAmount: 23500, installmentCount: 4, paidInstallments: 1, components: [{ name: "İmplant", amount: 36000 }, { name: "Cerrahi işlem", amount: 6000 }], type: "income", status: "PENDING", date: "Bugün, 11:24" },
     { id: 2, patientId: 2, name: "Mehmet Demir", detail: "Kanal tedavisi · Nakit", amount: 7200, type: "income", status: "PAID", date: "Bugün, 10:18" },
     { id: 3, patientId: null, name: "DentalLine Tedarik", detail: "Sarf malzeme", amount: 4600, type: "expense", status: "PAID", date: "Dün, 16:40" },
     { id: 4, patientId: 3, name: "Elif Kaya", detail: "Dolgu · Kart", amount: 3800, type: "income", status: "PAID", date: "Dün, 14:05" },
@@ -45,6 +45,11 @@
     { id: 6, patientId: 4, name: "Can Şahin", detail: "Ortodonti · Vade 8 Temmuz", amount: 6500, type: "income", status: "PENDING", date: "3 gün gecikmiş" },
     { id: 7, patientId: 6, name: "Mert Aydın", detail: "Muayene · Vade 10 Temmuz", amount: 3200, type: "income", status: "PENDING", date: "1 gün gecikmiş" }
   ];
+  const defaultTreatmentHistory = {
+    1: [{ date: "12 Temmuz 2026", treatment: "İmplant cerrahisi", doctor: "Dr. Emir Aydın", note: "Alt çene implant uygulaması tamamlandı." }, { date: "28 Haziran 2026", treatment: "Dijital ölçü", doctor: "Dr. Lara Er", note: "Protez planlaması yapıldı." }],
+    2: [{ date: "11 Temmuz 2026", treatment: "Kanal tedavisi · 2. seans", doctor: "Dr. Emir Aydın", note: "Geçici dolgu yenilendi." }],
+    3: [{ date: "9 Temmuz 2026", treatment: "Kompozit dolgu", doctor: "Dr. Lara Er", note: "Kontrol randevusu önerildi." }]
+  };
   const hotLeads = [
     { id: 1, name: "John Smith", country: "Birleşik Krallık", treatment: "İmplant + otel", score: 94, phone: "+44 700 000 1000" },
     { id: 2, name: "Emily Carter", country: "Birleşik Krallık", treatment: "Hollywood Smile", score: 88, phone: "+44 700 000 1001" },
@@ -84,6 +89,8 @@
     patients: storage.get("clinicnova.patients", defaultPatients),
     appointments: storage.get("clinicnova.appointments", defaultAppointments),
     transactions: storage.get("clinicnova.transactions", defaultTransactions),
+    treatmentHistory: storage.get("clinicnova.treatmentHistory", defaultTreatmentHistory),
+    patientMedia: storage.get("clinicnova.patientMedia", {}),
     selectedDate: todayIso,
     patientFilter: "ALL",
     patientQuery: "",
@@ -116,19 +123,25 @@
     storage.set("clinicnova.patients", state.patients);
     storage.set("clinicnova.appointments", state.appointments);
     storage.set("clinicnova.transactions", state.transactions);
+    storage.set("clinicnova.treatmentHistory", state.treatmentHistory);
+    storage.set("clinicnova.patientMedia", state.patientMedia);
+  }
+
+  function outstandingAmount(item) {
+    return Number.isFinite(Number(item.remainingAmount)) ? Number(item.remainingAmount) : item.status === "PENDING" ? Number(item.amount) : 0;
   }
 
   function renderDashboard() {
     const todayAppointments = state.appointments.filter((item) => item.date === todayIso).sort((a, b) => a.time.localeCompare(b.time));
     const revenue = state.transactions.filter((item) => item.type === "income" && item.status === "PAID").reduce((sum, item) => sum + item.amount, 0);
-    const pending = state.transactions.filter((item) => item.type === "income" && item.status === "PENDING");
+    const pending = state.transactions.filter((item) => item.type === "income" && outstandingAmount(item) > 0);
     $("#opportunitySummary").textContent = `${hotLeads.length} sıcak lead ve ${pending.length} geciken tahsilat bugün aksiyon bekliyor.`;
     $("#alertBanner").setAttribute("aria-label", `Gelir fırsatları hazır: ${hotLeads.length} sıcak lead ve ${pending.length} geciken tahsilat`);
     const metrics = [
       { label: "Bugünkü randevu", value: todayAppointments.length, detail: "+2 geçen haftaya göre", icon: "i-calendar", positive: true },
       { label: "Aylık tahsilat", value: currency(revenue), detail: "+%14 büyüme", icon: "i-wallet", positive: true, bars: true },
       { label: "Aktif hasta", value: state.patients.filter((item) => item.tag !== "PASSIVE").length, detail: "2 yeni kayıt", icon: "i-users" },
-      { label: "Bekleyen ödeme", value: currency(pending.reduce((sum, item) => sum + item.amount, 0)), detail: `${pending.length} geciken tahsilat`, icon: "i-chart" }
+      { label: "Bekleyen ödeme", value: currency(pending.reduce((sum, item) => sum + outstandingAmount(item), 0)), detail: `${pending.length} ödeme planı`, icon: "i-chart" }
     ];
     $("#metricGrid").innerHTML = metrics.map((metric) => `
       <article class="metric-card">
@@ -190,7 +203,7 @@
   function renderFinance() {
     const income = state.transactions.filter((item) => item.type === "income" && item.status === "PAID").reduce((sum, item) => sum + item.amount, 0);
     const expense = state.transactions.filter((item) => item.type === "expense" && item.status === "PAID").reduce((sum, item) => sum + item.amount, 0);
-    const pending = state.transactions.filter((item) => item.type === "income" && item.status === "PENDING");
+    const pending = state.transactions.filter((item) => item.type === "income" && outstandingAmount(item) > 0);
     const visibleTransactions = state.transactions.filter((item) => {
       if (state.transactionFilter === "ALL") return true;
       if (state.transactionFilter === "EXPENSE") return item.type === "expense";
@@ -199,14 +212,14 @@
     $("#financePeriod").textContent = new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(today);
     $("#monthlyRevenue").textContent = currency(income);
     $("#financeStats").innerHTML = [
-      ["Bekleyen tahsilat", currency(pending.reduce((sum, item) => sum + item.amount, 0)), `${pending.length} geciken bakiye`],
+      ["Bekleyen tahsilat", currency(pending.reduce((sum, item) => sum + outstandingAmount(item), 0)), `${pending.length} ödeme planı`],
       ["Net nakit akışı", currency(income - expense), "+%11 geçen aya göre"]
     ].map(([label, value, detail]) => `<article class="finance-stat"><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`).join("");
     $("#transactionFilterButton").textContent = ({ ALL: "Filtrele", PAID: "Ödenenler", PENDING: "Gecikenler", EXPENSE: "Giderler" })[state.transactionFilter];
     $("#transactionList").innerHTML = visibleTransactions.length ? visibleTransactions.map((item) => `<article class="transaction-card">
       <span class="transaction-icon ${item.type === "expense" ? "expense" : item.status === "PENDING" ? "pending" : ""}">${item.type === "expense" ? "−" : item.status === "PENDING" ? "!" : "+"}</span>
-      <span class="transaction-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)} · ${escapeHtml(item.date)}</small></span>
-      <span class="transaction-amount ${item.type === "expense" ? "expense" : item.status === "PENDING" ? "pending" : ""}">${item.type === "expense" ? "−" : "+"}${currency(item.amount)}<small>${item.type === "expense" ? "Gider" : item.status === "PENDING" ? "Gecikti" : "Ödendi"}</small></span>
+      <span class="transaction-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)} · ${escapeHtml(item.date)}</small>${item.components?.length ? `<span class="transaction-lines">${item.components.map((line) => `${escapeHtml(line.name)} ${currency(line.amount)}`).join(" · ")}</span>` : ""}${outstandingAmount(item) > 0 ? `<span class="installment-note">${item.paidInstallments || 0}/${item.installmentCount || 1} taksit ödendi · Kalan ${currency(outstandingAmount(item))}</span>` : ""}</span>
+      <span class="transaction-amount ${item.type === "expense" ? "expense" : outstandingAmount(item) > 0 ? "pending" : ""}">${item.type === "expense" ? "−" : "+"}${currency(item.amount)}<small>${item.type === "expense" ? "Gider" : outstandingAmount(item) > 0 ? "Kısmi ödendi" : "Ödendi"}</small></span>
     </article>`).join("") : `<div class="empty-state"><strong>İşlem bulunamadı</strong><br/>Filtreyi değiştirerek diğer hareketleri görüntüleyin.</div>`;
   }
 
@@ -290,12 +303,15 @@
     </form>`);
   }
 
-  function openAddPayment() {
-    const patientOptions = state.patients.map((patient) => `<option value="${patient.id}">${escapeHtml(patient.name)}</option>`).join("");
+  function openAddPayment(preferredPatientId) {
+    const selectedPatientId = Number(preferredPatientId);
+    const patientOptions = state.patients.map((patient) => `<option value="${patient.id}" ${patient.id === selectedPatientId ? "selected" : ""}>${escapeHtml(patient.name)}</option>`).join("");
     openModal("TAHSİLAT", "Ödeme al", `<form id="paymentForm" class="modal-grid">
       <label class="field">Hasta<select name="patientId" required>${patientOptions}</select></label>
-      <div class="modal-grid two"><label class="field">Tutar<input name="amount" type="number" inputmode="decimal" min="1" step="1" placeholder="0" required /></label><label class="field">Yöntem<select name="method"><option>Kart</option><option>Nakit</option><option>Transfer</option><option>Online</option></select></label></div>
-      <label class="field">Açıklama<input name="description" value="Tedavi tahsilatı" required /></label>
+      <div class="line-item-grid"><label class="field">İşlem 1<input name="itemName1" value="İmplant" required /></label><label class="field">Bedeli<input name="itemAmount1" type="number" inputmode="decimal" min="0" step="1" value="30000" required /></label><label class="field">İşlem 2<input name="itemName2" value="Protez üst yapı" /></label><label class="field">Bedeli<input name="itemAmount2" type="number" inputmode="decimal" min="0" step="1" value="12000" /></label></div>
+      <div class="modal-grid two"><label class="field">Şimdi alınan<input name="amount" type="number" inputmode="decimal" min="1" step="1" value="18000" required /></label><label class="field">Ödeme yöntemi<select name="method"><option>Kart</option><option>Nakit</option><option>Transfer</option><option>Online</option></select></label></div>
+      <div class="modal-grid two"><label class="field">Toplam taksit<select name="installmentCount"><option value="1">Tek çekim</option><option value="2">2 taksit</option><option value="3">3 taksit</option><option value="4" selected>4 taksit</option><option value="6">6 taksit</option><option value="9">9 taksit</option><option value="12">12 taksit</option></select></label><label class="field">Ödenen taksit<input name="paidInstallments" type="number" min="0" value="1" /></label></div>
+      <label class="field">Not<input name="description" value="Tedavi planı tahsilatı" required /></label>
       <p class="modal-note">Bu çevrimdışı sürümde tahsilat cihazda saklanır. Canlı sisteme bağlandığınızda kayıt merkezi finans panelinde tutulur.</p>
       <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Ödemeyi kaydet</button></div>
     </form>`);
@@ -304,11 +320,19 @@
   function openPatientDetail(id) {
     const patient = patientById(id);
     if (!patient) return;
-    const count = state.appointments.filter((item) => item.patientId === patient.id).length;
+    const appointments = state.appointments.filter((item) => item.patientId === patient.id);
+    const history = state.treatmentHistory[patient.id] || [];
+    const payments = state.transactions.filter((item) => item.patientId === patient.id && item.type === "income");
+    const media = state.patientMedia[patient.id] || [];
+    const totalPaid = payments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const totalRemaining = payments.reduce((sum, item) => sum + outstandingAmount(item), 0);
     openModal("HASTA PROFİLİ", patient.name, `<div class="modal-grid">
       <p class="modal-note"><strong>${escapeHtml(patient.phone)}</strong><br/>${escapeHtml(patient.email || "E-posta belirtilmedi")}<br/>Son ziyaret: ${escapeHtml(patient.lastVisit)}</p>
-      <div class="finance-stats"><article class="finance-stat"><span>Randevu</span><strong>${count}</strong><small>${escapeHtml(patient.treatment)}</small></article><article class="finance-stat"><span>Etiket</span><strong>${escapeHtml(patient.tag)}</strong><small>Aktif kayıt</small></article></div>
-      <button class="button button-primary" data-action="add-appointment" data-patient-prefill="${patient.id}">Yeni randevu oluştur</button>
+      <div class="finance-stats"><article class="finance-stat"><span>Tahsil edilen</span><strong>${currency(totalPaid)}</strong><small>${payments.length} ödeme kaydı</small></article><article class="finance-stat"><span>Kalan bakiye</span><strong>${currency(totalRemaining)}</strong><small>${appointments.length} randevu</small></article></div>
+      <section class="patient-section"><div class="patient-section-title"><strong>Geçmiş tedaviler</strong><span>${history.length}</span></div><div class="history-list">${history.length ? history.map((item) => `<article><i>🦷</i><span><strong>${escapeHtml(item.treatment)}</strong><small>${escapeHtml(item.date)} · ${escapeHtml(item.doctor)}</small><p>${escapeHtml(item.note)}</p></span></article>`).join("") : `<p class="empty-inline">Tedavi geçmişi yok.</p>`}</div></section>
+      <section class="patient-section"><div class="patient-section-title"><strong>Ödeme geçmişi</strong><span>${payments.length}</span></div><div class="history-list">${payments.length ? payments.map((item) => `<article><i>₺</i><span><strong>${currency(item.amount)} · ${escapeHtml(item.detail)}</strong><small>${escapeHtml(item.date)}${outstandingAmount(item) ? ` · Kalan ${currency(outstandingAmount(item))}` : " · Tamamlandı"}</small>${item.components?.length ? `<p>${item.components.map((line) => `${escapeHtml(line.name)}: ${currency(line.amount)}`).join(" · ")}</p>` : ""}</span></article>`).join("") : `<p class="empty-inline">Ödeme geçmişi yok.</p>`}</div></section>
+      <section class="patient-section"><div class="patient-section-title"><strong>Before / After fotoğrafları</strong><span>${media.length}</span></div><div class="photo-grid">${media.length ? media.map((item) => `<figure><img src="${escapeHtml(item.dataUrl)}" alt="${escapeHtml(item.kind)} fotoğrafı"/><figcaption>${escapeHtml(item.kind)} · ${escapeHtml(item.date)}</figcaption></figure>`).join("") : `<p class="empty-inline">Henüz fotoğraf eklenmedi.</p>`}</div><div class="photo-actions"><label class="button button-secondary">📷 Before çek<input class="visually-hidden" type="file" accept="image/*" capture="environment" data-patient-media="${patient.id}" data-media-kind="Before" /></label><label class="button button-secondary">📷 After çek<input class="visually-hidden" type="file" accept="image/*" capture="environment" data-patient-media="${patient.id}" data-media-kind="After" /></label><label class="button button-secondary">Dosyalardan yükle<input class="visually-hidden" type="file" accept="image/*" data-patient-media="${patient.id}" data-media-kind="Dosya" /></label></div></section>
+      <div class="modal-actions"><button class="button button-secondary" data-action="add-appointment" data-patient-prefill="${patient.id}">Yeni randevu oluştur</button><button class="button button-primary" data-action="add-payment" data-patient-prefill="${patient.id}">Ödeme ekle</button></div>
     </div>`);
   }
 
@@ -519,6 +543,8 @@
       state.patients = JSON.parse(JSON.stringify(defaultPatients));
       state.appointments = JSON.parse(JSON.stringify(defaultAppointments));
       state.transactions = JSON.parse(JSON.stringify(defaultTransactions));
+      state.treatmentHistory = JSON.parse(JSON.stringify(defaultTreatmentHistory));
+      state.patientMedia = {};
       state.transactionFilter = "ALL";
       storage.set("clinicnova.notificationsRead", false);
       $("#notificationDot").hidden = false;
@@ -527,7 +553,7 @@
     const action = target.dataset.action;
     if (action === "add-patient") { closeModal(); return openAddPatient(); }
     if (action === "add-appointment") { closeModal(); return openAddAppointment(target.dataset.patientPrefill); }
-    if (action === "add-payment") { closeModal(); return openAddPayment(); }
+    if (action === "add-payment") { closeModal(); return openAddPayment(target.dataset.patientPrefill); }
     if (action === "profile") return openProfile();
     if (action === "opportunities") return openRevenueOpportunities();
     if (action === "finance-report") return openFinanceReport();
@@ -538,6 +564,25 @@
   });
 
   $("#patientSearch").addEventListener("input", (event) => { state.patientQuery = event.target.value; renderPatients(); });
+  document.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-patient-media]");
+    if (!input || !input.files?.[0]) return;
+    const file = input.files[0];
+    if (!file.type.startsWith("image/")) return showToast("Lütfen bir fotoğraf seçin.");
+    if (file.size > 3 * 1024 * 1024) return showToast("Fotoğraf en fazla 3 MB olabilir.");
+    const patientId = Number(input.dataset.patientMedia);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const items = state.patientMedia[patientId] || [];
+      items.unshift({ id: Date.now(), kind: input.dataset.mediaKind || "Fotoğraf", date: "Şimdi", dataUrl: reader.result });
+      state.patientMedia[patientId] = items.slice(0, 8);
+      saveData();
+      openPatientDetail(patientId);
+      showToast(`${input.dataset.mediaKind || "Fotoğraf"} fotoğrafı eklendi.`);
+    };
+    reader.onerror = () => showToast("Fotoğraf okunamadı.");
+    reader.readAsDataURL(file);
+  });
   $("#modalClose").addEventListener("click", closeModal);
   $("#modalBackdrop").addEventListener("click", (event) => { if (event.target === event.currentTarget) closeModal(); });
   $("#notificationButton").addEventListener("click", openNotifications);
@@ -584,12 +629,18 @@
       const patient = patientById(form.get("patientId"));
       const amount = Number(form.get("amount"));
       if (!patient || !Number.isFinite(amount) || amount <= 0) return showToast("Hasta ve tutarı kontrol edin.");
+      const components = [1, 2].map((index) => ({ name: String(form.get(`itemName${index}`) || "").trim(), amount: Number(form.get(`itemAmount${index}`) || 0) })).filter((item) => item.name && item.amount > 0);
+      const totalAmount = components.reduce((sum, item) => sum + item.amount, 0);
+      if (!components.length || totalAmount <= 0 || amount > totalAmount) return showToast("İşlem bedellerini ve alınan tutarı kontrol edin.");
+      const installmentCount = Math.max(1, Number(form.get("installmentCount")) || 1);
+      const paidInstallments = Math.min(installmentCount, Math.max(0, Number(form.get("paidInstallments")) || 0));
+      const remainingAmount = Math.max(0, totalAmount - amount);
       state.transactions.unshift({
         id: Date.now(), patientId: patient.id, name: patient.name, detail: `${form.get("description").trim()} · ${form.get("method")}`,
-        amount, type: "income", status: "PAID", date: "Şimdi"
+        amount, totalAmount, remainingAmount, installmentCount, paidInstallments, components, type: "income", status: remainingAmount > 0 ? "PENDING" : "PAID", date: "Şimdi"
       });
       state.transactionFilter = "ALL";
-      saveData(); renderAll(); closeModal(); navigate("finance"); showToast("Ödeme başarıyla kaydedildi.");
+      saveData(); renderAll(); closeModal(); navigate("finance"); showToast(remainingAmount > 0 ? `Ödeme kaydedildi · ${currency(remainingAmount)} bakiye kaldı.` : "Ödeme tamamen tahsil edildi.");
     }
     if (event.target.id === "connectionForm") {
       event.preventDefault();
