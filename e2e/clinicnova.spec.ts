@@ -26,6 +26,14 @@ test("public experience is responsive and sends security headers", async ({ page
   await expect(page.getByText("Hesap bulunursa şifre yenileme bağlantısı e-posta ile gönderilir.")).toBeVisible();
 });
 
+test("outdated signed Android clients receive the secure update notice", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "userAgent", { value: `${navigator.userAgent} ClinicNovaAndroid/1.1.2`, configurable: true }));
+  await page.goto("/login");
+  const update = page.getByRole("link", { name: "İmzalı APK’yı güncelle" });
+  await expect(update).toBeVisible();
+  await expect(update).toHaveAttribute("href", "https://download.example.test/ClinicNova-1.2.0.apk");
+});
+
 test("a public package can be accepted only once", async ({ page }, testInfo) => {
   const token = testInfo.project.name === "android-chrome" ? "pkg-demo-5" : "pkg-demo-1";
   await page.goto(`/package/${token}`);
@@ -127,7 +135,7 @@ test("staff can sign in, use the dashboard and sign out", async ({ page }, testI
 
   const health = await page.request.get("/api/health");
   expect(health.status()).toBe(200);
-  expect(await health.json()).toMatchObject({ status: "ok", service: "clinicnova", version: "1.1.2" });
+  expect(await health.json()).toMatchObject({ status: "ok", service: "clinicnova", version: "1.2.0" });
 
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);

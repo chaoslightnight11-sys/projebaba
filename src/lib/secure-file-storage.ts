@@ -6,7 +6,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
 
-const HEADER = Buffer.from("CNV1");
+const LEGACY_HEADER = Buffer.from("CNV1");
+const HEADER = Buffer.from("CNV2");
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const MAX_IMAGE_EDGE = 2560;
 
@@ -21,7 +22,7 @@ function storageRoot() {
   return path.resolve(process.env.FILE_STORAGE_ROOT || path.join(process.cwd(), "var", "patient-files"));
 }
 
-function encryptionKey() {
+function legacyEncryptionKey() {
   const configured = process.env.FILE_ENCRYPTION_KEY;
   if (configured) {
     const decoded = Buffer.from(configured, "base64");
@@ -30,6 +31,61 @@ function encryptionKey() {
   }
   if (process.env.NODE_ENV === "production") throw new Error("FILE_ENCRYPTION_KEY yapılandırılmadı.");
   return createHash("sha256").update(process.env.AUTH_SECRET || "clinicnova-development-file-key").digest();
+}
+
+function encryptionKeyring() {
+  const configured = process.env.FILE_ENCRYPTION_KEYS;
+  if (!configured) return { activeId: "legacy", keys: new Map([["legacy", legacyEncryptionKey()]]) };
+  let values: Record<string, unknown>;
+  try { values = JSON.parse(configured) as Record<string, unknown>; } catch { throw new Error("FILE_ENCRYPTION_KEYS geçerli JSON olmalıdır."); }
+  const keys = new Map<string, Buffer>();
+  for (const [id, encoded] of Object.entries(values)) {
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(id) || typeof encoded !== "string") throw new Error("Dosya anahtarı kimliği geçersiz.");
+    const key = Buffer.from(encoded, "base64");
+    if (key.length !== 32) throw new Error(`${id} dosya anahtarı 32 bayt base64 olmalıdır.`);
+    keys.set(id, key);
+  }
+  const activeId = process.env.FILE_ENCRYPTION_ACTIVE_KEY_ID ?? "";
+  if (!keys.has(activeId)) throw new Error("FILE_ENCRYPTION_ACTIVE_KEY_ID anahtar halkasında bulunamadı.");
+  return { activeId, keys };
+}
+
+function encryptPayload(bytes: Buffer) {
+  const { activeId, keys } = encryptionKeyring();
+  const keyId = Buffer.from(activeId, "utf8");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", keys.get(activeId)!, iv);
+  const encrypted = Buffer.concat([cipher.update(bytes), cipher.final()]);
+  return Buffer.concat([HEADER, Buffer.from([keyId.length]), keyId, iv, cipher.getAuthTag(), encrypted]);
+}
+
+function decryptPayload(payload: Buffer) {
+  let key: Buffer;
+  let iv: Buffer;
+  let tag: Buffer;
+  let encrypted: Buffer;
+  if (payload.subarray(0, 4).equals(LEGACY_HEADER)) {
+    if (payload.length < 33) throw new Error("Dosya kasası kaydı geçersiz.");
+    key = legacyEncryptionKey();
+    iv = payload.subarray(4, 16);
+    tag = payload.subarray(16, 32);
+    encrypted = payload.subarray(32);
+  } else if (payload.subarray(0, 4).equals(HEADER)) {
+    const keyIdLength = payload[4];
+    const offset = 5 + keyIdLength;
+    if (!keyIdLength || payload.length < offset + 29) throw new Error("Dosya kasası kaydı geçersiz.");
+    const keyId = payload.subarray(5, offset).toString("utf8");
+    const keyring = encryptionKeyring();
+    const found = keyring.keys.get(keyId);
+    if (!found) throw new Error(`Dosya şifreleme anahtarı bulunamadı: ${keyId}`);
+    key = found;
+    iv = payload.subarray(offset, offset + 12);
+    tag = payload.subarray(offset + 12, offset + 28);
+    encrypted = payload.subarray(offset + 28);
+  } else throw new Error("Dosya kasası kaydı geçersiz.");
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
 }
 
 function safePart(value: string) {
@@ -124,10 +180,7 @@ export async function preparePatientUpload(input: Buffer): Promise<PreparedUploa
 export async function storePatientFile(organizationId: string, patientId: string, prepared: PreparedUpload) {
   const storageKey = path.join(safePart(organizationId), safePart(patientId), `${randomUUID()}.${prepared.extension}.enc`);
   const destination = absoluteStoragePath(storageKey);
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(prepared.bytes), cipher.final()]);
-  const payload = Buffer.concat([HEADER, iv, cipher.getAuthTag(), encrypted]);
+  const payload = encryptPayload(prepared.bytes);
   await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
   const temporary = `${destination}.${randomUUID()}.tmp`;
   try {
@@ -141,14 +194,20 @@ export async function storePatientFile(organizationId: string, patientId: string
 
 export async function readPatientFile(storageKey: string, expectedChecksum?: string | null) {
   const payload = await readFile(absoluteStoragePath(storageKey));
-  if (!payload.subarray(0, 4).equals(HEADER) || payload.length < 33) throw new Error("Dosya kasası kaydı geçersiz.");
-  const iv = payload.subarray(4, 16);
-  const tag = payload.subarray(16, 32);
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv);
-  decipher.setAuthTag(tag);
-  const bytes = Buffer.concat([decipher.update(payload.subarray(32)), decipher.final()]);
+  const bytes = decryptPayload(payload);
   if (expectedChecksum && createHash("sha256").update(bytes).digest("hex") !== expectedChecksum) throw new Error("Dosya bütünlük kontrolü başarısız.");
   return bytes;
+}
+
+export async function reencryptStoredPatientFile(storageKey: string, expectedChecksum?: string | null) {
+  const destination = absoluteStoragePath(storageKey);
+  const bytes = decryptPayload(await readFile(destination));
+  if (expectedChecksum && createHash("sha256").update(bytes).digest("hex") !== expectedChecksum) throw new Error("Dosya bütünlük kontrolü başarısız.");
+  const temporary = `${destination}.${randomUUID()}.rotate.tmp`;
+  try {
+    await writeFile(temporary, encryptPayload(bytes), { mode: 0o600 });
+    await rename(temporary, destination);
+  } finally { await rm(temporary, { force: true }); }
 }
 
 export async function deleteStoredPatientFile(storageKey: string | null | undefined) {
@@ -160,7 +219,7 @@ export async function assertFileStorageReady() {
   const root = storageRoot();
   await mkdir(root, { recursive: true, mode: 0o700 });
   await access(root, constants.R_OK | constants.W_OK);
-  encryptionKey();
+  encryptionKeyring();
   return root;
 }
 

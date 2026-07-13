@@ -17,6 +17,7 @@ type LoginValues = z.infer<typeof loginSchema>;
 export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const {
     register,
     handleSubmit,
@@ -37,6 +38,10 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
       body: JSON.stringify(values)
     });
 
+    if (response.status === 202) {
+      setMfaRequired(true);
+      return;
+    }
     if (!response.ok) {
       const data = (await response.json()) as { error?: string };
       setError(data.error ?? "Giriş yapılamadı.");
@@ -54,6 +59,11 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
         <Input id="email" type="email" autoComplete="email" {...register("email")} />
         {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
       </div>
+      {mfaRequired ? <div className="space-y-2">
+        <Label htmlFor="mfaCode">Doğrulama kodu</Label>
+        <Input id="mfaCode" inputMode="numeric" autoComplete="one-time-code" placeholder="123456 veya kurtarma kodu" autoFocus {...register("mfaCode")} />
+        <p className="text-xs text-muted-foreground">Authenticator uygulamanızdaki 6 haneli kodu girin.</p>
+      </div> : null}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3"><Label htmlFor="password">Şifre</Label><Link className="text-xs font-medium text-primary hover:underline" href="/forgot-password">Şifremi unuttum</Link></div>
         <Input id="password" type="password" autoComplete="current-password" {...register("password")} />

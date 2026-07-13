@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Database, Download, KeyRound, Languages, ShieldCheck, Settings } from "lucide-react";
 import { ModuleHeader } from "@/components/dashboard/module-header";
+import { MfaSettings } from "@/components/dashboard/mfa-settings";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { getProductionReadiness } from "@/lib/production-readiness";
 import { roleLabel } from "@/lib/rbac";
 import { cn, formatDateTime } from "@/lib/utils";
+import { isDemoMode } from "@/lib/demo-mode";
 
 async function requestDataDeletionAction() {
   "use server";
@@ -39,11 +41,12 @@ export default async function SettingsPage() {
   const session = await requireSession();
   const locale = await getLocale();
   const readiness = getProductionReadiness();
-  const [organization, branches, users, auditLogs] = await Promise.all([
+  const [organization, branches, users, auditLogs, currentUser] = await Promise.all([
     prisma.organization.findFirst({ where: { id: session.organizationId } }),
     prisma.branch.findMany({ where: { organizationId: session.organizationId }, orderBy: { name: "asc" } }),
     prisma.user.findMany({ where: { organizationId: session.organizationId }, orderBy: { name: "asc" } }),
-    prisma.auditLog.findMany({ where: { organizationId: session.organizationId }, include: { user: true }, orderBy: { createdAt: "desc" }, take: 30 })
+    prisma.auditLog.findMany({ where: { organizationId: session.organizationId }, include: { user: true }, orderBy: { createdAt: "desc" }, take: 30 }),
+    prisma.user.findUnique({ where: { id: session.userId }, select: { mfaEnabledAt: true } })
   ]);
 
   return (
@@ -91,6 +94,10 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" />İki aşamalı doğrulama</CardTitle></CardHeader>
+        <CardContent><MfaSettings initialEnabled={Boolean(currentUser?.mfaEnabledAt)} demo={isDemoMode()} /></CardContent>
+      </Card>
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-primary" />Roller</CardTitle></CardHeader>
         <CardContent className="p-0">

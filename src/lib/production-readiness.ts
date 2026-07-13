@@ -85,6 +85,24 @@ export function getProductionReadiness() {
       detail: Boolean(process.env.FILE_STORAGE_ROOT?.startsWith("/") && isEncryptionKey(process.env.FILE_ENCRYPTION_KEY)) ? "Harici dosya alanı ve AES-256 anahtarı yapılandırılmış" : "Mutlak FILE_STORAGE_ROOT ve 32 baytlık base64 FILE_ENCRYPTION_KEY gerekli"
     },
     {
+      key: "mfa",
+      label: "Personel 2FA anahtarı",
+      state: isEncryptionKey(process.env.MFA_ENCRYPTION_KEY) ? "pass" : production ? "error" : "warning",
+      detail: isEncryptionKey(process.env.MFA_ENCRYPTION_KEY) ? "Authenticator sırları ayrı AES-256 anahtarıyla korunuyor" : "32 baytlık base64 MFA_ENCRYPTION_KEY gerekli"
+    },
+    {
+      key: "audit_anchor",
+      label: "Audit zinciri sabitleme",
+      state: isStrongSecret(process.env.AUDIT_ANCHOR_KEY) && Boolean(process.env.AUDIT_ANCHOR_REMOTE) ? "pass" : production ? "error" : "warning",
+      detail: isStrongSecret(process.env.AUDIT_ANCHOR_KEY) && Boolean(process.env.AUDIT_ANCHOR_REMOTE) ? "İmzalı audit başlıkları uzak immutable hedefe aktarılıyor" : "AUDIT_ANCHOR_KEY ve AUDIT_ANCHOR_REMOTE gerekli"
+    },
+    {
+      key: "monitoring",
+      label: "Operasyon alarmı",
+      state: isHttpsUrl(process.env.OPS_ALERT_WEBHOOK_URL) && isStrongSecret(process.env.OPS_ALERT_WEBHOOK_SECRET) ? "pass" : production ? "error" : "warning",
+      detail: isHttpsUrl(process.env.OPS_ALERT_WEBHOOK_URL) && isStrongSecret(process.env.OPS_ALERT_WEBHOOK_SECRET) ? "İmzalı sağlık/yedek/disk alarmı yapılandırılmış" : "OPS_ALERT_WEBHOOK_URL ve güçlü OPS_ALERT_WEBHOOK_SECRET gerekli"
+    },
+    {
       key: "antivirus",
       label: "Dosya antivirüsü",
       state: process.env.FILE_AV_REQUIRED === "true" && Boolean(process.env.FILE_AV_COMMAND) ? "pass" : production ? "error" : "warning",

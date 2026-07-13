@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export const loginSchema = z.object({
   email: z.string().email("Gecerli bir e-posta girin.").toLowerCase(),
-  password: z.string().min(8, "Sifre en az 8 karakter olmali.")
+  password: z.string().min(8, "Sifre en az 8 karakter olmali."),
+  mfaCode: z.string().trim().min(6).max(20).optional()
 });
 
 export const registerSchema = z.object({

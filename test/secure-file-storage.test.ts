@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import sharp from "sharp";
-import { assertFileSecurityReady, deleteStoredPatientFile, preparePatientUpload, readPatientFile, storePatientFile } from "../src/lib/secure-file-storage";
+import { assertFileSecurityReady, deleteStoredPatientFile, preparePatientUpload, readPatientFile, reencryptStoredPatientFile, storePatientFile } from "../src/lib/secure-file-storage";
 
 test("patient images are resized, encrypted outside the database and integrity checked", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "clinicnova-storage-test-"));
@@ -21,11 +21,32 @@ test("patient images are resized, encrypted outside the database and integrity c
 
     const storageKey = await storePatientFile("org/unsafe", "patient-1", prepared);
     const encrypted = await readFile(path.join(root, storageKey));
-    assert.equal(encrypted.subarray(0, 4).toString(), "CNV1");
+    assert.equal(encrypted.subarray(0, 4).toString(), "CNV2");
     assert.notDeepEqual(encrypted.subarray(32), prepared.bytes);
     assert.deepEqual(await readPatientFile(storageKey, prepared.checksumSha256), prepared.bytes);
     await deleteStoredPatientFile(storageKey);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("file encryption key rotation preserves data and requires the retained old key", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "clinicnova-key-rotation-"));
+  process.env.FILE_STORAGE_ROOT = root;
+  const oldKey = Buffer.alloc(32, 41).toString("base64");
+  const newKey = Buffer.alloc(32, 42).toString("base64");
+  process.env.FILE_ENCRYPTION_KEYS = JSON.stringify({ old: oldKey, next: newKey });
+  process.env.FILE_ENCRYPTION_ACTIVE_KEY_ID = "old";
+  try {
+    const bytes = Buffer.from("rotation-sensitive-content");
+    const storageKey = await storePatientFile("org", "patient", { bytes, mimeType: "application/pdf", extension: "pdf", checksumSha256: "" });
+    process.env.FILE_ENCRYPTION_ACTIVE_KEY_ID = "next";
+    await reencryptStoredPatientFile(storageKey);
+    process.env.FILE_ENCRYPTION_KEYS = JSON.stringify({ next: newKey });
+    assert.deepEqual(await readPatientFile(storageKey), bytes);
+  } finally {
+    delete process.env.FILE_ENCRYPTION_KEYS;
+    delete process.env.FILE_ENCRYPTION_ACTIVE_KEY_ID;
     await rm(root, { recursive: true, force: true });
   }
 });

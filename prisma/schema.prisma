@@ -355,23 +355,29 @@ model Branch {
 }
 
 model User {
-  id                  String               @id @default(cuid())
-  name                String
-  email               String               @unique
-  passwordHash        String
-  role                Role
-  active              Boolean              @default(true)
-  organizationId      String
-  branchId            String?
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch              Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  doctorAppointments  Appointment[]        @relation("DoctorAppointments")
-  doctorPlans         TreatmentPlan[]      @relation("DoctorPlans")
-  doctorTreatments    Treatment[]          @relation("DoctorTreatments")
-  auditLogs           AuditLog[]
-  passwordResetTokens PasswordResetToken[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                        String               @id @default(cuid())
+  name                      String
+  email                     String               @unique
+  passwordHash              String
+  role                      Role
+  active                    Boolean              @default(true)
+  mfaSecretEncrypted        String?
+  mfaPendingSecretEncrypted String?
+  mfaPendingExpiresAt       DateTime?
+  mfaEnabledAt              DateTime?
+  mfaRecoveryCodeHashes     Json?
+  mfaLastUsedCounter        Int                  @default(-1)
+  organizationId            String
+  branchId                  String?
+  organization              Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch                    Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  doctorAppointments        Appointment[]        @relation("DoctorAppointments")
+  doctorPlans               TreatmentPlan[]      @relation("DoctorPlans")
+  doctorTreatments          Treatment[]          @relation("DoctorTreatments")
+  auditLogs                 AuditLog[]
+  passwordResetTokens       PasswordResetToken[]
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 
   @@index([organizationId])
   @@index([branchId])
@@ -832,6 +838,8 @@ model AuditLog {
   metadata       Json?
   ip             String?
   userAgent      String?
+  previousHash   String?
+  entryHash      String?      @unique
   organizationId String
   branchId       String?
   user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -844,6 +852,7 @@ model AuditLog {
   @@index([branchId])
   @@index([userId])
   @@index([module])
+  @@index([organizationId, createdAt])
 }
 
 model Lead {

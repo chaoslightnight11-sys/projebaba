@@ -93,6 +93,9 @@ function appointmentDate(day: number, hour: number, minute = 0) {
 }
 
 async function resetDatabase() {
+  if (process.env.NODE_ENV === "production") throw new Error("Seed production veritabanında çalıştırılamaz.");
+  await prisma.$executeRawUnsafe('ALTER TABLE "AuditLog" DISABLE TRIGGER "AuditLog_immutable_update"');
+  try {
   await prisma.integrationLog.deleteMany();
   await prisma.task.deleteMany();
   await prisma.notification.deleteMany();
@@ -135,6 +138,9 @@ async function resetDatabase() {
   await prisma.user.deleteMany();
   await prisma.branch.deleteMany();
   await prisma.organization.deleteMany();
+  } finally {
+    await prisma.$executeRawUnsafe('ALTER TABLE "AuditLog" ENABLE TRIGGER "AuditLog_immutable_update"');
+  }
 }
 
 async function main() {

@@ -57,17 +57,52 @@ npm run start:production
 
 `GET /api/health` uygulama/veritabanı sağlığını, `GET /api/ready` ise yapılandırma hazırlığını döndürür. Trafik yalnızca ikisi de başarılı olduğunda yönlendirilmelidir.
 
+## Personel 2FA
+
+`MFA_ENCRYPTION_KEY`, dosya anahtarından ayrı üretilmiş 32 baytlık base64 anahtar olmalıdır. Personel Ayarlar ekranından Authenticator QR kodunu tarar, ilk TOTP koduyla kurulumu tamamlar ve yalnızca bir kez gösterilen kurtarma kodlarını parola kasasına kaydeder. Etkin hesaplarda parola tek başına oturum açamaz; TOTP kodları yeniden kullanılamaz ve kurtarma kodları tüketildiğinde veritabanından atomik olarak kaldırılır.
+
+## Şifreleme anahtarı rotasyonu
+
+Yeni dosyalar anahtar kimliği taşıyan `CNV2` biçimindedir. Rotasyonda eski ve yeni anahtarı aynı halkaya koyun, aktif kimliği yeni anahtara alın ve dosyaları yeniden şifreleyin:
+
+```bash
+export FILE_ENCRYPTION_KEYS='{"2026-01":"OLD_BASE64","2026-07":"NEW_BASE64"}'
+export FILE_ENCRYPTION_ACTIVE_KEY_ID='2026-07'
+npm run files:rotate-key
+```
+
+Rotasyon ve örnek dosya okuma doğrulaması bitmeden eski anahtarı kasadan kaldırmayın. `FILE_ENCRYPTION_KEY` yalnız `CNV1` kayıtlarını okuyabilmek için geçiş süresince tutulur.
+
+MFA sırları da anahtar kimlikli `MFA2` biçimindedir. `MFA_ENCRYPTION_KEYS` halkasına eski+yeni anahtarı koyup `MFA_ENCRYPTION_ACTIVE_KEY_ID` değerini yeni kimliğe alın; ardından `npm run mfa:rotate-key` çalıştırın. Kullanıcıların 2FA girişini doğrulamadan eski anahtarı kaldırmayın. `AUTH_SECRET` değişimi tüm mevcut oturumları ve kurtarma kodu hashlerini geçersiz kılacağından planlı yeniden giriş penceresinde yapılmalıdır.
+
+## Audit bütünlüğü ve operasyon alarmları
+
+Audit kayıtları PostgreSQL trigger'ı ile tenant bazında SHA-256 zincirine eklenir ve update/delete işlemleri veritabanı düzeyinde reddedilir. `ops/audit/export-anchor.sh` zincir başlarını HMAC ile imzalayıp hasta verisi içermeden uzak immutable hedefe gönderir. `ops/clinicnova-operations.cron` günlük sabitleme örneğini içerir.
+
+`npm run ops:check`; health/readiness, son yedek yaşı ve dosya diski doluluğunu denetler. Sorunda yalnız teknik kontrol sonuçlarını `OPS_ALERT_WEBHOOK_URL` adresine imzalı olarak yollar; hasta verisi göndermez.
+
+## Staging ve yük/felaket provası
+
+Gerçek üretim adresinde yanlışlıkla yük testi çalışmaması için betik varsayılan olarak yalnız staging/localhost adreslerini kabul eder:
+
+```bash
+LOAD_TEST_URL=https://staging.example.com npm run test:load
+STAGING_APP_URL=https://staging.example.com bash ops/staging/disaster-drill.sh
+```
+
+Felaket provası health/readiness kontrolünü, gerçek PostgreSQL geri yükleme testini ve eşzamanlı yük eşiğini birlikte doğrular.
+
 ## Docker
 
 Uygulama ve migration imajlarını ayrı üretin:
 
 ```bash
-docker build --target migrator -t clinicnova-migrator:1.1.2 .
-docker build --target file-migrator -t clinicnova-file-migrator:1.1.2 .
-docker build --target runner -t clinicnova:1.1.2 .
-docker run --rm --env-file .env.production clinicnova-migrator:1.1.2
-docker run --rm --env-file .env.production -v clinicnova-files:/var/lib/clinicnova/patient-files clinicnova-file-migrator:1.1.2
-docker run --env-file .env.production -v clinicnova-files:/var/lib/clinicnova/patient-files -p 3000:3000 clinicnova:1.1.2
+docker build --target migrator -t clinicnova-migrator:1.2.0 .
+docker build --target file-migrator -t clinicnova-file-migrator:1.2.0 .
+docker build --target runner -t clinicnova:1.2.0 .
+docker run --rm --env-file .env.production clinicnova-migrator:1.2.0
+docker run --rm --env-file .env.production -v clinicnova-files:/var/lib/clinicnova/patient-files clinicnova-file-migrator:1.2.0
+docker run --env-file .env.production -v clinicnova-files:/var/lib/clinicnova/patient-files -p 3000:3000 clinicnova:1.2.0
 ```
 
 Migration işi başarıyla tamamlanmadan yeni uygulama imajına trafik vermeyin.
@@ -88,6 +123,8 @@ Gelen tenant webhook'ları `Authorization: Bearer <N8N_WEBHOOK_SECRET>` ve `X-Cl
 ## Mobil üretim paketi
 
 Gerçek APK demo verisi içermez; ilk açılışta HTTPS ClinicNova adresi ister. Sabit sunucu adresiyle kurumsal paket:
+
+`/api/mobile/version`, Android WebView kullanıcı aracındaki sürümü karşılaştırmak için minimum/güncel sürüm, HTTPS APK adresi ve SHA-256 yayınlar. Android işletim sistemi mevcut uygulamanın yalnız aynı imzalama anahtarıyla üretilmiş APK ile yükseltilmesine izin verir. Her sürümde `MOBILE_APK_URL`, `MOBILE_APK_SHA256` ve gerekiyorsa `MOBILE_MIN_VERSION` güncellenmelidir.
 
 ```bash
 MOBILE_MODE=production MOBILE_SERVER_URL=https://app.example.com npm run android:build

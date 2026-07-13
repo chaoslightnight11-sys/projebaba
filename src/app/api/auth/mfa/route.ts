@@ -1,0 +1,80 @@
+import QRCode from "qrcode";
+import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { getCurrentSession, verifyPassword } from "@/lib/auth";
+import { isDemoMode } from "@/lib/demo-mode";
+import { buildOtpauthUri, createMfaSecret, createRecoveryCodes, decryptMfaSecret, encryptMfaSecret, hashRecoveryCode, verifyTotp } from "@/lib/mfa";
+import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/lib/services/auditLogService";
+
+async function currentUser() {
+  const session = await getCurrentSession();
+  if (!session || isDemoMode()) return null;
+  const user = await prisma.user.findFirst({
+    where: { id: session.userId, organizationId: session.organizationId, active: true },
+    include: { organization: { select: { name: true } } }
+  });
+  return user ? { session, user } : null;
+}
+
+export async function GET() {
+  const current = await currentUser();
+  if (!current) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  return NextResponse.json({ enabled: Boolean(current.user.mfaEnabledAt) });
+}
+
+export async function POST() {
+  const current = await currentUser();
+  if (!current) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  const secret = createMfaSecret();
+  const uri = buildOtpauthUri(secret, current.user.email, current.user.organization.name);
+  await prisma.user.update({
+    where: { id: current.user.id },
+    data: {
+      mfaPendingSecretEncrypted: encryptMfaSecret(secret),
+      mfaPendingExpiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    }
+  });
+  return NextResponse.json({ secret, qrCode: await QRCode.toDataURL(uri, { width: 240, margin: 1, errorCorrectionLevel: "M" }) });
+}
+
+export async function PUT(request: Request) {
+  const current = await currentUser();
+  if (!current) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  const code = String((await request.json() as { code?: unknown }).code ?? "");
+  if (!current.user.mfaPendingSecretEncrypted || !current.user.mfaPendingExpiresAt || current.user.mfaPendingExpiresAt <= new Date()) {
+    return NextResponse.json({ error: "Kurulum süresi doldu. Yeniden başlatın." }, { status: 400 });
+  }
+  const encrypted = current.user.mfaPendingSecretEncrypted;
+  const counter = verifyTotp(decryptMfaSecret(encrypted), code);
+  if (counter === null) return NextResponse.json({ error: "Doğrulama kodu geçersiz." }, { status: 400 });
+  const recoveryCodes = createRecoveryCodes();
+  await prisma.user.update({
+    where: { id: current.user.id },
+    data: {
+      mfaSecretEncrypted: encrypted,
+      mfaEnabledAt: new Date(),
+      mfaRecoveryCodeHashes: recoveryCodes.map(hashRecoveryCode),
+      mfaLastUsedCounter: counter,
+      mfaPendingSecretEncrypted: null,
+      mfaPendingExpiresAt: null
+    }
+  });
+  await writeAuditLog({ userId: current.user.id, action: "ENABLE_MFA", module: "auth", organizationId: current.session.organizationId, branchId: current.session.branchId });
+  return NextResponse.json({ recoveryCodes });
+}
+
+export async function DELETE(request: Request) {
+  const current = await currentUser();
+  if (!current) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  if (!current.user.mfaEnabledAt || !current.user.mfaSecretEncrypted) return NextResponse.json({ error: "2FA etkin değil." }, { status: 400 });
+  const body = await request.json() as { password?: unknown; code?: unknown };
+  if (!await verifyPassword(String(body.password ?? ""), current.user.passwordHash)) return NextResponse.json({ error: "Şifre hatalı." }, { status: 401 });
+  if (verifyTotp(decryptMfaSecret(current.user.mfaSecretEncrypted), String(body.code ?? "")) === null) return NextResponse.json({ error: "Doğrulama kodu geçersiz." }, { status: 401 });
+  await prisma.user.update({
+    where: { id: current.user.id },
+    data: { mfaSecretEncrypted: null, mfaEnabledAt: null, mfaRecoveryCodeHashes: Prisma.JsonNull, mfaLastUsedCounter: -1 }
+  });
+  await writeAuditLog({ userId: current.user.id, action: "DISABLE_MFA", module: "auth", organizationId: current.session.organizationId, branchId: current.session.branchId });
+  return NextResponse.json({ enabled: false });
+}

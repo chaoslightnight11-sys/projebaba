@@ -37,11 +37,16 @@ jobs:
       REQUIRE_LIVE_INTEGRATIONS: "true"
       FILE_STORAGE_ROOT: /tmp/clinicnova-patient-files
       FILE_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      MFA_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
       FILE_AV_REQUIRED: "true"
       FILE_AV_COMMAND: clamscan
       PITR_ENABLED: "true"
       BACKUP_REMOTE: ci-remote:clinicnova
       RESTORE_TEST_SCHEDULED: "true"
+      AUDIT_ANCHOR_KEY: ci-audit-anchor-secret-at-least-32-characters
+      AUDIT_ANCHOR_REMOTE: ci-remote:clinicnova-audit
+      OPS_ALERT_WEBHOOK_URL: https://automation.example.test/webhook/ops
+      OPS_ALERT_WEBHOOK_SECRET: ci-ops-alert-secret-at-least-32-characters
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

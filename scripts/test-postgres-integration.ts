@@ -43,8 +43,13 @@ async function main() {
     assert.equal(await prisma.patientFile.count({ where: { id: patientFile.id } }), 0);
     await assert.rejects(() => access(`${process.env.FILE_STORAGE_ROOT}/${storageKey}`));
     assert.equal(await prisma.auditLog.count({ where: { organizationId: organization.id, entityId: patientFile.id, action: "PURGE_PATIENT_FILE" } }), 1);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { organizationId: organization.id, action: "PURGE_PATIENT_FILE" } });
+    assert.match(audit.entryHash ?? "", /^[a-f0-9]{64}$/);
+    await assert.rejects(() => prisma.auditLog.update({ where: { id: audit.id }, data: { action: "TAMPERED" } }));
   } finally {
-    await prisma.organization.deleteMany({ where: { slug: organizationSlug } });
+    await prisma.$executeRawUnsafe('ALTER TABLE "AuditLog" DISABLE TRIGGER "AuditLog_immutable_update"');
+    try { await prisma.organization.deleteMany({ where: { slug: organizationSlug } }); }
+    finally { await prisma.$executeRawUnsafe('ALTER TABLE "AuditLog" ENABLE TRIGGER "AuditLog_immutable_update"'); }
     await prisma.$disconnect();
   }
   console.log("PostgreSQL soft-delete, restore, purge, audit ve dosya kasası entegrasyonu başarılı.");
