@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
@@ -27,7 +27,7 @@ function resultUrl(type: "success" | "error", message: string) {
 
 async function createConsentAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("consents");
   const parsed = consentSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
@@ -64,7 +64,7 @@ async function createConsentAction(formData: FormData) {
 
 async function sendConsentAction(id: string) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("consents");
   const consent = await prisma.consent.findFirst({ where: { id, organizationId: session.organizationId, patient: { deletedAt: null } } });
   if (!consent) redirect(resultUrl("error", "Gönderilecek onam bulunamadı."));
   const patient = await prisma.patient.findFirst({ where: { id: consent.patientId, organizationId: session.organizationId, deletedAt: null } });
@@ -114,7 +114,7 @@ async function sendConsentAction(id: string) {
 
 export default async function ConsentsPage(props: { searchParams: Promise<{ success?: string; error?: string }> }) {
   const searchParams = await props.searchParams;
-  const session = await requireSession();
+  const session = await requireModuleAccess("consents");
   const locale = await getLocale();
   const [patients, consents] = await Promise.all([
     prisma.patient.findMany({ where: { organizationId: session.organizationId, deletedAt: null }, orderBy: { firstName: "asc" }, take: 200 }),

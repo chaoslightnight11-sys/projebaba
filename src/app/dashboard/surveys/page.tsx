@@ -8,14 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 import { surveySchema } from "@/lib/validations/engagement";
 
 async function createSurveyAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("surveys");
   const branchId = await getWritableBranchId(session);
   const payload = surveySchema.parse(Object.fromEntries(formData));
   await prisma.survey.create({ data: { title: payload.title, description: payload.description || null, organizationId: session.organizationId, branchId } });
@@ -23,7 +23,7 @@ async function createSurveyAction(formData: FormData) {
 }
 
 export default async function SurveysPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("surveys");
   const [surveys, responses] = await Promise.all([
     prisma.survey.findMany({ where: { organizationId: session.organizationId }, include: { responses: true }, orderBy: { createdAt: "desc" } }),
     prisma.surveyResponse.findMany({ where: { organizationId: session.organizationId, patient: { deletedAt: null } }, include: { patient: true, survey: true }, orderBy: { createdAt: "desc" }, take: 80 })

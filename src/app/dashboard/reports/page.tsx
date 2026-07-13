@@ -6,19 +6,19 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PrintButton } from "@/components/ui/print-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { getReports } from "@/lib/services/reportService";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 export default async function ReportsPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("reports");
   const locale = await getLocale();
   const reports = await getReports(session.organizationId);
 
   const cards = [
-    ["Aylık gelir", formatCurrency(reports.revenue, locale)],
+    ["Toplam tahsilat", formatCurrency(reports.revenue, locale)],
     ["Toplam gider", formatCurrency(reports.expense, locale)],
     ["Net nakit", formatCurrency(reports.netRevenue, locale)],
     ["Bekleyen tahsilat", formatCurrency(reports.pendingRevenue, locale)],

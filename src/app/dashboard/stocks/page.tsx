@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { createStockItem, createStockMovement, createStockOffer, getStocks } from "@/lib/services/stockService";
@@ -28,7 +28,7 @@ function errorMessage(error: unknown) {
 
 async function createStockAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("stocks");
   const branchId = await getWritableBranchId(session);
   try { await createStockItem(session.organizationId, branchId, stockItemSchema.parse(Object.fromEntries(formData))); }
   catch (error) { redirect(resultUrl("error", errorMessage(error))); }
@@ -38,7 +38,7 @@ async function createStockAction(formData: FormData) {
 
 async function createMovementAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("stocks");
   const branchId = await getWritableBranchId(session);
   try { await createStockMovement(session.organizationId, branchId, stockMovementSchema.parse(Object.fromEntries(formData))); }
   catch (error) { redirect(resultUrl("error", errorMessage(error))); }
@@ -48,7 +48,7 @@ async function createMovementAction(formData: FormData) {
 
 async function createOfferAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("stocks");
   const branchId = await getWritableBranchId(session);
   try { await createStockOffer(session.organizationId, branchId, stockOfferSchema.parse(Object.fromEntries(formData))); }
   catch (error) { redirect(resultUrl("error", errorMessage(error))); }
@@ -58,7 +58,7 @@ async function createOfferAction(formData: FormData) {
 
 async function refreshOffersAction(itemId: string) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("stocks");
   let count = 0;
   try { count = await refreshProductOffers(session.organizationId, itemId); }
   catch (error) { redirect(resultUrl("error", errorMessage(error))); }
@@ -68,7 +68,7 @@ async function refreshOffersAction(itemId: string) {
 
 export default async function StocksPage({ searchParams }: { searchParams: Promise<{ success?: string; error?: string }> }) {
   const query = await searchParams;
-  const session = await requireSession();
+  const session = await requireModuleAccess("stocks");
   const locale = await getLocale();
   const stocks = await getStocks(session.organizationId);
 
@@ -99,7 +99,7 @@ export default async function StocksPage({ searchParams }: { searchParams: Promi
             <form action={createMovementAction} className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2 md:col-span-2"><Label>Ürün</Label><Select name="itemId" required><option value="">Seçin</option>{stocks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div>
               <div className="space-y-2"><Label>Tip</Label><Select name="type" defaultValue="IN"><option value="IN">Giriş</option><option value="OUT">Çıkış</option><option value="ADJUSTMENT">Düzeltme</option></Select></div>
-              <div className="space-y-2"><Label>Miktar</Label><Input name="quantity" type="number" min="1" defaultValue="1" /></div>
+              <div className="space-y-2"><Label>Miktar / yeni seviye</Label><Input name="quantity" type="number" min="0" defaultValue="1" /><p className="text-xs text-muted-foreground">Düzeltmede girilen değer yeni stok seviyesi olur; 0 kullanılabilir.</p></div>
               <div className="space-y-2 md:col-span-2"><Label>Not</Label><Input name="note" /></div>
               <Button className="w-fit md:col-span-2" type="submit">Hareket Kaydet</Button>
             </form>

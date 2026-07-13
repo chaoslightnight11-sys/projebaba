@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { access } from "node:fs/promises";
-import { PatientFileCategory, PatientTag, Role } from "@prisma/client";
+import { PatientFileCategory, PatientTag, Role, TreatmentStatus } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
 import { storePatientFile } from "../src/lib/secure-file-storage";
 import { deletePatient, getPatients, restorePatient, updatePatient } from "../src/lib/services/patientService";
@@ -9,24 +9,41 @@ import { purgeExpiredTrash } from "../src/lib/services/trashService";
 import { verifyAuditIntegrity } from "../src/lib/services/auditIntegrityService";
 import { createRecoveryCodes, encryptMfaSecret, hashRecoveryCode, totpCode } from "../src/lib/mfa";
 import { verifyMfaForLogin } from "../src/lib/services/mfaService";
+import { createAppointment } from "../src/lib/services/appointmentService";
+import { createPayment } from "../src/lib/services/financeService";
+import { createStockItem, createStockMovement } from "../src/lib/services/stockService";
 
 const suffix = randomUUID().slice(0, 8);
 const organizationSlug = `deep-test-${suffix}`;
+const foreignOrganizationSlug = `foreign-test-${suffix}`;
 
 async function main() {
   const organization = await prisma.organization.create({ data: { name: "Deep Test Clinic", slug: organizationSlug } });
+  const foreignOrganization = await prisma.organization.create({ data: { name: "Foreign Test Clinic", slug: foreignOrganizationSlug } });
   try {
     const branch = await prisma.branch.create({ data: { name: "Test Branch", city: "Istanbul", organizationId: organization.id } });
     const user = await prisma.user.create({ data: { name: "Test Owner", email: `owner-${suffix}@example.test`, passwordHash: "not-used-in-integration-test", role: Role.CLINIC_OWNER, organizationId: organization.id, branchId: branch.id } });
     const patient = await prisma.patient.create({ data: { firstName: "Derin", lastName: "Test", phone: "+90 555 000 00 01", phoneNormalized: "5550000001", birthDate: new Date("1990-01-01T00:00:00.000Z"), tag: PatientTag.ACTIVE, organizationId: organization.id, branchId: branch.id } });
+    const foreignBranch = await prisma.branch.create({ data: { name: "Foreign Branch", city: "Ankara", organizationId: foreignOrganization.id } });
+    const foreignDoctor = await prisma.user.create({ data: { name: "Foreign Doctor", email: `foreign-${suffix}@example.test`, passwordHash: "not-used", role: Role.DOCTOR, organizationId: foreignOrganization.id, branchId: foreignBranch.id } });
+    await assert.rejects(() => createAppointment(organization.id, { patientId: patient.id, doctorId: foreignDoctor.id, startsAt: "2027-01-10T10:00", durationMinutes: 30, treatmentType: "Kontrol", status: "PLANNED", room: "", notes: "" }), /bu kliniğe ait değil/);
 
-    assert.equal((await getPatients(organization.id)).length, 1);
+    const secondPatient = await prisma.patient.create({ data: { firstName: "İkinci", lastName: "Hasta", phone: "+90 555 000 00 02", phoneNormalized: "5550000002", birthDate: new Date("1991-01-01T00:00:00.000Z"), tag: PatientTag.ACTIVE, organizationId: organization.id, branchId: branch.id } });
+    const treatment = await prisma.treatment.create({ data: { patientId: patient.id, doctorId: user.id, treatmentType: "Dolgu", fee: 1000, status: TreatmentStatus.STARTED, organizationId: organization.id, branchId: branch.id } });
+    await assert.rejects(() => createPayment(organization.id, branch.id, { patientId: secondPatient.id, treatmentId: treatment.id, type: "INCOME", amount: 100, method: "CARD", status: "PAID", isDeposit: true, listAmount: "", discountAmount: "", referralSource: "", description: "", paidAt: "", dueDate: "" }), /bu hastaya ait değil/);
+
+    const stock = await createStockItem(organization.id, branch.id, { name: "Test Stok", category: "Sarf", currentQuantity: 7, minimumQuantity: 2, unit: "adet", supplier: "", purchasePrice: 10 });
+    assert.equal(await prisma.stockMovement.count({ where: { itemId: stock.id, type: "IN", quantity: 7 } }), 1, "açılış stoku hareket kaydı üretmeli");
+    await createStockMovement(organization.id, branch.id, { itemId: stock.id, type: "ADJUSTMENT", quantity: 0, note: "Sayım" });
+    assert.equal((await prisma.stockItem.findUniqueOrThrow({ where: { id: stock.id } })).currentQuantity, 0);
+
+    assert.equal((await getPatients(organization.id)).length, 2);
     assert.equal((await deletePatient(organization.id, patient.id, user.id, branch.id)).count, 1);
     const deleted = await prisma.patient.findUniqueOrThrow({ where: { id: patient.id } });
     assert.ok(deleted.deletedAt);
     assert.ok(deleted.purgeAt && deleted.purgeAt > deleted.deletedAt!);
     assert.equal(deleted.deletedById, user.id);
-    assert.equal((await getPatients(organization.id)).length, 0);
+    assert.equal((await getPatients(organization.id)).length, 1);
     assert.equal((await updatePatient(organization.id, patient.id, { firstName: "Degismez", lastName: "Test", phone: patient.phone, gender: "UNSPECIFIED", tag: "ACTIVE" })).count, 0);
     assert.equal((await prisma.auditLog.count({ where: { organizationId: organization.id, entityId: patient.id, action: "SOFT_DELETE_PATIENT" } })), 1);
 
@@ -74,7 +91,7 @@ async function main() {
     assert.deepEqual(recoveryRace.sort(), ["invalid", "verified"], "eşzamanlı kurtarma kodu atomik olarak tüketilmeli");
   } finally {
     await prisma.$executeRawUnsafe('ALTER TABLE "AuditLog" DISABLE TRIGGER "AuditLog_immutable_update"');
-    try { await prisma.organization.deleteMany({ where: { slug: organizationSlug } }); }
+    try { await prisma.organization.deleteMany({ where: { slug: { in: [organizationSlug, foreignOrganizationSlug] } } }); }
     finally { await prisma.$executeRawUnsafe('ALTER TABLE "AuditLog" ENABLE TRIGGER "AuditLog_immutable_update"'); }
     await prisma.$disconnect();
   }

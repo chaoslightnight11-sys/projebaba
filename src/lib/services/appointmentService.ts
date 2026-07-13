@@ -50,14 +50,15 @@ async function assertDoctorAvailability(organizationId: string, doctorId: string
 }
 
 export async function createAppointment(organizationId: string, input: AppointmentInput) {
-  const patient = await prisma.patient.findFirst({
-    where: { id: input.patientId, organizationId, deletedAt: null },
-    select: { branchId: true }
-  });
+  const [patient, doctor] = await Promise.all([
+    prisma.patient.findFirst({ where: { id: input.patientId, organizationId, deletedAt: null }, select: { branchId: true } }),
+    prisma.user.findFirst({ where: { id: input.doctorId, organizationId, active: true, role: { in: [Role.DOCTOR, Role.CLINIC_OWNER] } }, select: { id: true } })
+  ]);
 
   if (!patient) {
     throw new Error("Hasta bulunamadi.");
   }
+  if (!doctor) throw new Error("Seçilen doktor bulunamadı veya bu kliniğe ait değil.");
 
   const startsAt = new Date(input.startsAt);
   await assertDoctorAvailability(organizationId, input.doctorId, startsAt, input.durationMinutes);

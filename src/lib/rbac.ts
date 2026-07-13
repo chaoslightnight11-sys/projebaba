@@ -18,9 +18,9 @@ export type ModuleKey =
   | "settings";
 
 const permissions: Record<Role, ModuleKey[]> = {
-  SUPER_ADMIN: ["dashboard", "patients", "appointments", "treatments", "finance", "stocks", "staff", "consents", "surveys", "communication", "tourism", "reports", "settings"],
-  CLINIC_OWNER: ["dashboard", "patients", "appointments", "treatments", "finance", "stocks", "staff", "consents", "surveys", "communication", "tourism", "reports", "settings"],
-  MANAGER: ["dashboard", "patients", "appointments", "treatments", "finance", "stocks", "staff", "consents", "surveys", "communication", "tourism", "reports", "settings"],
+  SUPER_ADMIN: ["dashboard", "patients", "appointments", "treatments", "finance", "stocks", "staff", "consents", "surveys", "communication", "tourism", "recalls", "reports", "settings"],
+  CLINIC_OWNER: ["dashboard", "patients", "appointments", "treatments", "finance", "stocks", "staff", "consents", "surveys", "communication", "tourism", "recalls", "reports", "settings"],
+  MANAGER: ["dashboard", "patients", "appointments", "treatments", "finance", "stocks", "staff", "consents", "surveys", "communication", "tourism", "recalls", "reports", "settings"],
   DOCTOR: ["dashboard", "patients", "appointments", "treatments", "consents", "surveys", "communication", "tourism", "reports"],
   ASSISTANT: ["dashboard", "patients", "appointments", "treatments", "stocks", "consents", "communication", "tourism"],
   ACCOUNTANT: ["dashboard", "patients", "finance", "reports"],

@@ -29,6 +29,7 @@ export function PaymentForm({
   const [discountAmount, setDiscountAmount] = useState("");
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState("PAID");
+  const [type, setType] = useState("INCOME");
 
   const patientTreatments = useMemo(
     () => (patientId ? treatments.filter((treatment) => treatment.patientId === patientId) : treatments),
@@ -87,7 +88,7 @@ export function PaymentForm({
       </div>
       <div className="space-y-2">
         <Label>İşlem tipi</Label>
-        <Select name="type" defaultValue="INCOME">
+        <Select name="type" value={type} onChange={(event) => setType(event.target.value)}>
           <option value="INCOME">Gelir</option>
           <option value="EXPENSE">Gider</option>
         </Select>
@@ -145,10 +146,10 @@ export function PaymentForm({
           <option value="CANCELLED">İptal</option>
         </Select>
       </div>
-      <label className="flex min-h-10 items-center gap-3 rounded-md border px-3 text-sm">
+      {type === "INCOME" ? <label className="flex min-h-10 items-center gap-3 rounded-md border px-3 text-sm">
         <input name="isDeposit" type="checkbox" className="h-4 w-4" />
         Bu tahsilat peşinattır
-      </label>
+      </label> : null}
       <div className="space-y-2">
         <Label>Tarih</Label>
         <Input name="paidAt" type="date" />

@@ -3,10 +3,12 @@ import { requireSession } from "@/lib/auth";
 import { createStockMovement } from "@/lib/services/stockService";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 import { stockMovementSchema } from "@/lib/validations/stock";
+import { canAccess } from "@/lib/rbac";
 
 export async function POST(request: Request) {
   try {
     const session = await requireSession();
+    if (!canAccess(session.role, "stocks")) return NextResponse.json({ error: "Yetkiniz yok." }, { status: 403 });
     const branchId = await getWritableBranchId(session);
     const payload = stockMovementSchema.parse(await request.json());
     const movement = await createStockMovement(session.organizationId, branchId, payload);

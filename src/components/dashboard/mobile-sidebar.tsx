@@ -7,6 +7,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { dashboardNavLabels, shellText, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { canAccess, type ModuleKey } from "@/lib/rbac";
+import type { Role } from "@prisma/client";
 
 const navItems = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
@@ -26,7 +28,7 @@ const navItems = [
   { href: "/dashboard/settings", key: "settings", icon: Settings }
 ];
 
-export function MobileSidebar({ locale = "tr" }: { locale?: Locale }) {
+export function MobileSidebar({ locale = "tr", role }: { locale?: Locale; role: Role }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const text = shellText[locale];
@@ -56,7 +58,7 @@ export function MobileSidebar({ locale = "tr" }: { locale?: Locale }) {
               </Button>
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {navItems.map((item) => {
+              {navItems.filter((item) => canAccess(role, (item.key === "treatmentPlans" ? "treatments" : item.key) as ModuleKey)).map((item) => {
                 const active = item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
                 return (
                 <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground", active && "bg-primary/10 font-medium text-primary")}>

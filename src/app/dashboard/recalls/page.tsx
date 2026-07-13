@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +19,7 @@ import { formatDate } from "@/lib/utils";
 
 async function createRecallAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("recalls");
   const payload = recallSchema.parse(Object.fromEntries(formData));
   const patient = await prisma.patient.findFirst({ where: { id: payload.patientId, organizationId: session.organizationId, deletedAt: null }, select: { branchId: true } });
   if (!patient) throw new Error("Hasta bulunamadi.");
@@ -38,7 +38,7 @@ async function createRecallAction(formData: FormData) {
 }
 
 export default async function RecallsPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("recalls");
   const locale = await getLocale();
   const [patients, recalls] = await Promise.all([
     prisma.patient.findMany({ where: { organizationId: session.organizationId, deletedAt: null }, orderBy: { firstName: "asc" }, take: 200 }),

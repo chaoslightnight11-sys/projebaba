@@ -13,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       select: { name: true }
     }),
     prisma.notification.findMany({
-      where: { organizationId: session.organizationId },
+      where: { organizationId: session.organizationId, OR: [{ userId: null }, { userId: session.userId }] },
       orderBy: { createdAt: "desc" },
       take: 8
     })
@@ -30,7 +30,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar className="sticky top-0 hidden h-screen lg:flex" locale={locale} />
+      <Sidebar className="sticky top-0 hidden h-screen lg:flex" locale={locale} role={session.role} />
       <div className="min-w-0 flex-1">
         <Topbar session={session} organizationName={organization?.name ?? "ClinicNova"} notifications={bellNotifications} locale={locale} />
         <main className="mx-auto w-full max-w-[1500px] p-4 md:p-6">{children}</main>

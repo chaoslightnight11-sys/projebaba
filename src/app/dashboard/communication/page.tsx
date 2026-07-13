@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel, translateText, type Locale } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
@@ -76,7 +76,7 @@ async function ensurePatientAccess(patientId: string | undefined, organizationId
 
 async function sendMessageAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("communication");
   const parsed = communicationSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
@@ -112,7 +112,7 @@ async function sendMessageAction(formData: FormData) {
 
 async function logIncomingMessageAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("communication");
   const parsed = incomingCommunicationSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
@@ -187,7 +187,7 @@ function CommunicationRows({ logs, emptyText, locale }: { logs: LogWithPatient[]
 
 export default async function CommunicationPage(props: { searchParams: Promise<{ success?: string; error?: string }> }) {
   const searchParams = await props.searchParams;
-  const session = await requireSession();
+  const session = await requireModuleAccess("communication");
   const locale = await getLocale();
   const [patients, logs] = await Promise.all([
     prisma.patient.findMany({ where: { organizationId: session.organizationId, deletedAt: null }, orderBy: { firstName: "asc" }, take: 200 }),

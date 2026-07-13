@@ -60,6 +60,12 @@ export async function createPayment(organizationId: string, fallbackBranchId: st
 
   const listAmount = typeof input.listAmount === "number" ? input.listAmount : treatment ? toNumber(treatment.fee) : null;
   const discountAmount = typeof input.discountAmount === "number" ? input.discountAmount : null;
+  if (input.patientId && !patient) throw new Error("Seçilen hasta bulunamadı veya bu kliniğe ait değil.");
+  if (input.treatmentId && !treatment) throw new Error("Seçilen tedavi bulunamadı veya bu kliniğe ait değil.");
+  if (patient && treatment && patient.id !== treatment.patientId) throw new Error("Seçilen tedavi bu hastaya ait değil.");
+  if (input.isDeposit && input.type !== "INCOME") throw new Error("Gider kaydı peşinat olarak işaretlenemez.");
+  if (input.isDeposit && !patient && !treatment) throw new Error("Peşinat için hasta veya tedavi seçilmelidir.");
+  if (listAmount !== null && discountAmount !== null && discountAmount > listAmount) throw new Error("İndirim liste fiyatından büyük olamaz.");
 
   return prisma.payment.create({
     data: {

@@ -6,7 +6,7 @@ import { PaymentForm } from "@/components/forms/payment-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { createPayment, getFinanceOverview } from "@/lib/services/financeService";
@@ -16,7 +16,7 @@ import { formatCurrency, formatDate, toNumber } from "@/lib/utils";
 
 async function createPaymentAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("finance");
   const branchId = await getWritableBranchId(session);
   const payload = paymentSchema.parse(Object.fromEntries(formData));
   await createPayment(session.organizationId, branchId, payload);
@@ -25,7 +25,7 @@ async function createPaymentAction(formData: FormData) {
 }
 
 export default async function PaymentsPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("finance");
   const locale = await getLocale();
   const finance = await getFinanceOverview(session.organizationId);
 

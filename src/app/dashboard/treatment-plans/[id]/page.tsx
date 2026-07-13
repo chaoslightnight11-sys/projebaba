@@ -4,14 +4,14 @@ import { notFound } from "next/navigation";
 import { TreatmentStatusBadge } from "@/components/dashboard/treatment-status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 export default async function TreatmentPlanDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await requireSession();
+  const session = await requireModuleAccess("treatments");
   const locale = await getLocale();
   const plan = await prisma.treatmentPlan.findFirst({
     where: { id, organizationId: session.organizationId, patient: { deletedAt: null } },

@@ -2,14 +2,14 @@ import { Stethoscope } from "lucide-react";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
 import { getDashboardMetrics } from "@/lib/services/reportService";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function DoctorsPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("staff");
   const locale = await getLocale();
   const [profiles, metrics] = await Promise.all([
     prisma.doctorProfile.findMany({

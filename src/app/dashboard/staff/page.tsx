@@ -8,14 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 import { staffSchema } from "@/lib/validations/staff";
 
 async function createStaffAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("staff");
   const branchId = await getWritableBranchId(session);
   const payload = staffSchema.parse(Object.fromEntries(formData));
   await prisma.staff.create({
@@ -35,7 +35,7 @@ async function createStaffAction(formData: FormData) {
 }
 
 export default async function StaffPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("staff");
   const staff = await prisma.staff.findMany({
     where: { organizationId: session.organizationId },
     include: { branch: true, doctorProfile: true },

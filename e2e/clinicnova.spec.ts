@@ -83,11 +83,60 @@ test("sales workflows expose full calendar, treatment details, stock purchasing 
   await expect(page.getByLabel("Bu tahsilat peşinattır")).toBeVisible();
 });
 
+test("operational writes preserve tenant and accounting integrity", async ({ page }, testInfo) => {
+  await page.goto("/demo-open");
+
+  const financeResponse = await page.request.get("/api/payments");
+  expect(financeResponse.status()).toBe(200);
+  const finance = await financeResponse.json();
+  const treatment = finance.treatments[0];
+  const activePatient = finance.patients[0];
+
+  const badAppointment = await page.request.post("/api/appointments", { data: {
+    patientId: activePatient.id, doctorId: "doctor_from_another_clinic", startsAt: "2027-01-10T10:00", durationMinutes: 30,
+    treatmentType: "Kontrol", status: "PLANNED"
+  } });
+  expect(badAppointment.status()).toBe(400);
+  expect((await badAppointment.json()).error).toMatch(/doktor/i);
+
+  const otherPatient = finance.patients.find((patient: { id: string }) => patient.id !== treatment.patientId);
+  const mismatchedPayment = await page.request.post("/api/payments", { data: {
+    patientId: otherPatient.id, treatmentId: treatment.id, type: "INCOME", amount: 100, method: "CARD", status: "PAID", isDeposit: true
+  } });
+  expect(mismatchedPayment.status()).toBe(400);
+  expect((await mismatchedPayment.json()).error).toMatch(/bu hastaya ait değil/i);
+
+  const name = `Test ürün ${testInfo.project.name}`;
+  const createdResponse = await page.request.post("/api/stocks", { data: {
+    name, category: "Test", currentQuantity: 7, minimumQuantity: 2, unit: "adet", supplier: "Test", purchasePrice: 10
+  } });
+  expect(createdResponse.status()).toBe(201);
+  const created = (await createdResponse.json()).stock;
+  const afterCreate = await (await page.request.get("/api/stocks")).json();
+  const createdItem = afterCreate.stocks.find((item: { id: string }) => item.id === created.id);
+  expect(createdItem.movements[0]).toMatchObject({ type: "IN", quantity: 7, note: "Açılış stoku" });
+
+  const zeroAdjustment = await page.request.post("/api/stocks/movement", { data: { itemId: created.id, type: "ADJUSTMENT", quantity: 0, note: "Sayım" } });
+  expect(zeroAdjustment.status()).toBe(201);
+  const afterAdjustment = await (await page.request.get("/api/stocks")).json();
+  expect(afterAdjustment.stocks.find((item: { id: string }) => item.id === created.id).currentQuantity).toBe(0);
+});
+
 test("patient portal scopes identity and revokes a deleted patient's session", async ({ page }, testInfo) => {
-  const isAndroid = testInfo.project.name === "android-chrome";
-  const patient = isAndroid
-    ? { id: "patient_02", phone: "+90 532 555 1001", birthDate: "1986-02-10", wrongBirthDate: "1986-02-11", name: "Mehmet Demir" }
-    : { id: "patient_01", phone: "+90 532 555 1000", birthDate: "1985-01-10", wrongBirthDate: "1985-01-11", name: "Ayşe Yılmaz" };
+  await page.goto("/demo-open");
+  const suffix = testInfo.project.name === "android-chrome" ? "902" : "901";
+  const patient = {
+    phone: `+90 555 000 0${suffix}`,
+    birthDate: "1990-01-10",
+    wrongBirthDate: "1990-01-11",
+    name: `Portal Test ${suffix}`
+  };
+  const createdResponse = await page.request.post("/api/patients", { data: {
+    firstName: "Portal Test", lastName: suffix, phone: patient.phone, birthDate: patient.birthDate,
+    gender: "UNSPECIFIED", tag: "ACTIVE"
+  } });
+  expect(createdResponse.status()).toBe(201);
+  const patientId = (await createdResponse.json()).patient.id;
 
   await page.goto("/portal/login");
   await page.getByLabel("Telefon numaranız").fill(patient.phone);
@@ -101,11 +150,8 @@ test("patient portal scopes identity and revokes a deleted patient's session", a
   await expect(page).toHaveURL(/\/portal$/);
   await expect(page.getByRole("heading", { name: `Merhaba, ${patient.name}` })).toBeVisible();
 
-  await page.goto("/login");
-  await page.getByLabel("E-posta").fill("owner@clinicnova.test");
-  await page.getByLabel("Şifre").fill("password123");
-  await page.getByRole("button", { name: "Giriş Yap" }).click();
-  await page.goto(`/dashboard/patients/${patient.id}`);
+  await page.goto("/demo-open");
+  await page.goto(`/dashboard/patients/${patientId}`);
   await page.getByRole("button", { name: "Hastayı Sil" }).click();
   await expect(page).toHaveURL(/\/dashboard\/patients$/);
 
@@ -114,8 +160,9 @@ test("patient portal scopes identity and revokes a deleted patient's session", a
 
   await page.goto("/dashboard/patients/trash");
   await expect(page.getByText(patient.name)).toBeVisible();
-  await page.getByRole("button", { name: "Geri yükle" }).first().click();
-  await expect(page.getByText("Silinen hasta yok.")).toBeVisible();
+  const row = page.getByRole("row").filter({ hasText: patient.name });
+  await row.getByRole("button", { name: "Geri yükle" }).click();
+  await expect(page.getByText(patient.name)).toHaveCount(0);
 });
 
 const primaryDashboardRoutes = [
@@ -231,6 +278,13 @@ test("reception staff cannot delete patient records", async ({ page }) => {
   await page.goto("/dashboard/patients/patient_02");
   await expect(page.getByRole("heading", { name: "Mehmet Demir" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hastayı Sil" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Stok" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Finans" })).toHaveCount(0);
+  await page.goto("/dashboard/stocks");
+  await expect(page).toHaveURL(/\/dashboard\?error=forbidden$/);
+  expect((await page.request.get("/api/stocks")).status()).toBe(403);
+  expect((await page.request.get("/api/payments")).status()).toBe(403);
+  expect((await page.request.get("/api/reports/export")).status()).toBe(403);
 });
 
 test("staff can sign in, use the dashboard and sign out", async ({ page }, testInfo) => {
@@ -264,8 +318,7 @@ test("staff can sign in, use the dashboard and sign out", async ({ page }, testI
 
   await page.goto("/dashboard");
   await page.getByRole("button", { name: "Bildirimler" }).click();
-  await page.getByRole("link", { name: /Yeni sıcak lead/ }).click();
-  await expect(page).toHaveURL(/\/dashboard\/tourism\/leads$/);
+  await expect(page.getByRole("link", { name: /Yeni sıcak lead/ })).toHaveCount(0);
 
   await page.goto("/dashboard");
   const dashboardOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);

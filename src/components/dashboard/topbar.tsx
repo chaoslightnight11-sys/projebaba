@@ -26,7 +26,7 @@ async function markAllNotificationsReadAction() {
   const { prisma } = await import("@/lib/prisma");
   const session = await requireSession();
   await prisma.notification.updateMany({
-    where: { organizationId: session.organizationId, read: false },
+    where: { organizationId: session.organizationId, read: false, OR: [{ userId: null }, { userId: session.userId }] },
     data: { read: true }
   });
   revalidatePath("/dashboard", "layout");
@@ -47,7 +47,7 @@ export function Topbar({
 
   return (
     <header className="sticky top-0 z-30 flex min-h-16 items-center gap-3 border-b bg-background/92 px-4 backdrop-blur md:px-6">
-      <MobileSidebar locale={locale} />
+      <MobileSidebar locale={locale} role={session.role} />
       <LanguageToggle className="hidden shrink-0 md:inline-flex" locale={locale} label={text.language} variant="prominent" />
       <GlobalSearch locale={locale} />
       <div className="ml-auto flex items-center gap-2">

@@ -13,8 +13,11 @@ export const stockItemSchema = z.object({
 export const stockMovementSchema = z.object({
   itemId: z.string().min(1),
   type: z.enum(["IN", "OUT", "ADJUSTMENT"]),
-  quantity: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().min(0),
   note: z.string().optional().or(z.literal(""))
+}).refine((value) => value.type === "ADJUSTMENT" || value.quantity > 0, {
+  message: "Giriş ve çıkış miktarı sıfırdan büyük olmalı.",
+  path: ["quantity"]
 });
 
 export const stockOfferSchema = z.object({

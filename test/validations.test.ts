@@ -4,7 +4,9 @@ import { loginSchema, registerSchema } from "../src/lib/validations/auth";
 import { paginationSchema } from "../src/lib/validations/common";
 import { portalLoginSchema } from "../src/lib/validations/portal";
 import { paymentSchema } from "../src/lib/validations/finance";
-import { stockOfferSchema } from "../src/lib/validations/stock";
+import { stockMovementSchema, stockOfferSchema } from "../src/lib/validations/stock";
+import { canAccess } from "../src/lib/rbac";
+import { Role } from "@prisma/client";
 
 test("login validation normalizes e-mail addresses", () => {
   const result = loginSchema.parse({ email: "OWNER@CLINICNOVA.TEST", password: "password123" });
@@ -37,4 +39,16 @@ test("stock purchase offers require a secure product link", () => {
   const base = { itemId: "stock_1", seller: "Dental Market", unitPrice: "250", shippingPrice: "20", inStock: "on" };
   assert.equal(stockOfferSchema.safeParse({ ...base, productUrl: "http://shop.example/product" }).success, false);
   assert.equal(stockOfferSchema.parse({ ...base, productUrl: "https://shop.example/product" }).inStock, true);
+});
+
+test("stock adjustment can set zero while entry and exit cannot", () => {
+  assert.equal(stockMovementSchema.safeParse({ itemId: "stock_1", type: "ADJUSTMENT", quantity: 0 }).success, true);
+  assert.equal(stockMovementSchema.safeParse({ itemId: "stock_1", type: "IN", quantity: 0 }).success, false);
+  assert.equal(stockMovementSchema.safeParse({ itemId: "stock_1", type: "OUT", quantity: 0 }).success, false);
+});
+
+test("role permissions hide financial and stock data from reception", () => {
+  assert.equal(canAccess(Role.RECEPTIONIST, "finance"), false);
+  assert.equal(canAccess(Role.RECEPTIONIST, "stocks"), false);
+  assert.equal(canAccess(Role.CLINIC_OWNER, "recalls"), true);
 });

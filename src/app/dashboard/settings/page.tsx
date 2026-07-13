@@ -8,7 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
 import { getProductionReadiness } from "@/lib/production-readiness";
@@ -18,7 +18,7 @@ import { isDemoMode } from "@/lib/demo-mode";
 
 async function requestDataDeletionAction() {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("settings");
   const existing = await prisma.auditLog.findFirst({
     where: { organizationId: session.organizationId, action: "DATA_DELETION_REQUEST", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
   });
@@ -38,7 +38,7 @@ async function requestDataDeletionAction() {
 }
 
 export default async function SettingsPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("settings");
   const locale = await getLocale();
   const readiness = getProductionReadiness();
   const [organization, branches, users, auditLogs, currentUser] = await Promise.all([

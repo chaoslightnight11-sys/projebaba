@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { sendEInvoice } from "@/lib/integrations/eInvoiceProvider";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +15,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 
 async function sendInvoiceAction(invoiceId: string) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("finance");
   const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, organizationId: session.organizationId, OR: [{ patientId: null }, { patient: { deletedAt: null } }] } });
   if (!invoice) throw new Error("Fatura bulunamadi.");
   const result = await sendEInvoice(invoice.number);
@@ -28,7 +28,7 @@ async function sendInvoiceAction(invoiceId: string) {
 }
 
 export default async function InvoicesPage() {
-  const session = await requireSession();
+  const session = await requireModuleAccess("finance");
   const locale = await getLocale();
   const invoices = await prisma.invoice.findMany({
     where: { organizationId: session.organizationId, OR: [{ patientId: null }, { patient: { deletedAt: null } }] },

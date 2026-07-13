@@ -45,18 +45,26 @@ export async function createStockOffer(organizationId: string, branchId: string,
 }
 
 export async function createStockItem(organizationId: string, branchId: string, input: StockItemInput) {
-  return prisma.stockItem.create({
-    data: {
-      name: input.name,
-      category: input.category,
-      currentQuantity: input.currentQuantity,
-      minimumQuantity: input.minimumQuantity,
-      unit: input.unit,
-      supplier: input.supplier || null,
-      purchasePrice: input.purchasePrice,
-      organizationId,
-      branchId
+  return prisma.$transaction(async (tx) => {
+    const item = await tx.stockItem.create({
+      data: {
+        name: input.name,
+        category: input.category,
+        currentQuantity: input.currentQuantity,
+        minimumQuantity: input.minimumQuantity,
+        unit: input.unit,
+        supplier: input.supplier || null,
+        purchasePrice: input.purchasePrice,
+        organizationId,
+        branchId
+      }
+    });
+    if (input.currentQuantity > 0) {
+      await tx.stockMovement.create({
+        data: { itemId: item.id, type: StockMovementType.IN, quantity: input.currentQuantity, note: "Açılış stoku", organizationId, branchId }
+      });
     }
+    return item;
   });
 }
 

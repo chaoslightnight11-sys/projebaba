@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { ClipboardList } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Role, TreatmentStatus } from "@prisma/client";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { TreatmentStatusBadge } from "@/components/dashboard/treatment-status-badge";
@@ -11,18 +12,28 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
 import { treatmentPlanSchema } from "@/lib/validations/treatment";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
+function resultUrl(type: "success" | "error", message: string) {
+  return `/dashboard/treatment-plans?${type}=${encodeURIComponent(message)}`;
+}
+
 async function createPlanAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
-  const payload = treatmentPlanSchema.parse(Object.fromEntries(formData));
-  const patient = await prisma.patient.findFirst({ where: { id: payload.patientId, organizationId: session.organizationId, deletedAt: null }, select: { branchId: true } });
-  if (!patient) throw new Error("Hasta bulunamadi.");
+  const session = await requireModuleAccess("treatments");
+  const parsed = treatmentPlanSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect(resultUrl("error", parsed.error.issues[0]?.message ?? "Tedavi planı formu geçersiz."));
+  const payload = parsed.data;
+  const [patient, doctor] = await Promise.all([
+    prisma.patient.findFirst({ where: { id: payload.patientId, organizationId: session.organizationId, deletedAt: null }, select: { branchId: true } }),
+    prisma.user.findFirst({ where: { id: payload.doctorId, organizationId: session.organizationId, active: true, role: { in: [Role.DOCTOR, Role.CLINIC_OWNER] } }, select: { id: true } })
+  ]);
+  if (!patient) redirect(resultUrl("error", "Hasta bulunamadı veya bu kliniğe ait değil."));
+  if (!doctor) redirect(resultUrl("error", "Doktor bulunamadı veya bu kliniğe ait değil."));
   await prisma.treatmentPlan.create({
     data: {
       patientId: payload.patientId,
@@ -38,10 +49,12 @@ async function createPlanAction(formData: FormData) {
     }
   });
   revalidatePath("/dashboard/treatment-plans");
+  redirect(resultUrl("success", "Tedavi planı kaydedildi."));
 }
 
-export default async function TreatmentPlansPage() {
-  const session = await requireSession();
+export default async function TreatmentPlansPage({ searchParams }: { searchParams: Promise<{ success?: string; error?: string }> }) {
+  const query = await searchParams;
+  const session = await requireModuleAccess("treatments");
   const locale = await getLocale();
   const [plans, patients, doctors] = await Promise.all([
     prisma.treatmentPlan.findMany({ where: { organizationId: session.organizationId, patient: { deletedAt: null } }, include: { patient: true, doctor: { select: { name: true } } }, orderBy: { plannedAt: "desc" }, take: 100 }),
@@ -52,6 +65,8 @@ export default async function TreatmentPlansPage() {
   return (
     <div className="space-y-6">
       <ModuleHeader icon={ClipboardList} title="Tedavi Planlama" description="Hasta, diş numarası, önerilen tedavi, tahmini ücret, durum ve hekim takibi." />
+      {query.success ? <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700">{query.success}</div> : null}
+      {query.error ? <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{query.error}</div> : null}
       <Card>
         <CardHeader><CardTitle>Plan ekle</CardTitle></CardHeader>
         <CardContent>

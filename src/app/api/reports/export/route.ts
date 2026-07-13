@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { getReports } from "@/lib/services/reportService";
+import { canAccess } from "@/lib/rbac";
 
 export async function GET() {
   const session = await requireSession();
+  if (!canAccess(session.role, "reports")) return NextResponse.json({ error: "Yetkiniz yok." }, { status: 403 });
   const reports = await getReports(session.organizationId);
   const rows = [
     ["metric", "value"],

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { intlLocale, statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { createAppointment, getAppointmentFormOptions, getAppointments } from "@/lib/services/appointmentService";
@@ -32,7 +32,7 @@ function actionErrorMessage(error: unknown, fallback: string) {
 
 async function createAppointmentAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("appointments");
   const parsed = appointmentSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
@@ -51,7 +51,7 @@ async function createAppointmentAction(formData: FormData) {
 
 async function resolveRequestAction(appointmentId: string, decision: "approve" | "reject") {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("appointments");
   try {
     await resolvePortalAppointmentRequest(session.organizationId, appointmentId, decision);
   } catch (error) {
@@ -66,7 +66,7 @@ async function resolveRequestAction(appointmentId: string, decision: "approve" |
 
 async function sendReminderAction(patientId: string, phone: string) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("appointments");
   const branchId = await getWritableBranchId(session);
   try {
     await sendMessage({
@@ -93,7 +93,7 @@ function startOfDay(date: Date) {
 
 export default async function AppointmentsPage(props: { searchParams: Promise<{ success?: string; error?: string; month?: string }> }) {
   const searchParams = await props.searchParams;
-  const session = await requireSession();
+  const session = await requireModuleAccess("appointments");
   const locale = await getLocale();
   const today = startOfDay(new Date());
   const requestedMonth = /^(20\d{2}|2100)-(0[1-9]|1[0-2])$/.test(searchParams.month ?? "") ? searchParams.month! : null;
@@ -245,6 +245,10 @@ export default async function AppointmentsPage(props: { searchParams: Promise<{ 
         </CardHeader>
         <CardContent className="p-0">
       <div className="grid grid-cols-7 border-l border-t">
+        {Array.from({ length: 7 }, (_, index) => {
+          const day = new Date(2024, 0, 1 + index);
+          return <div key={index} className="border-b border-r bg-muted/50 p-2 text-center text-xs font-medium">{new Intl.DateTimeFormat(intlLocale(locale), { weekday: "short" }).format(day)}</div>;
+        })}
         {calendarDays.map((day) => {
           const dayAppointments = appointments.filter((appointment) => startOfDay(appointment.startsAt).getTime() === day.getTime());
           const inMonth = day.getMonth() === monthStart.getMonth();

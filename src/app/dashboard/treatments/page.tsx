@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { requireSession } from "@/lib/auth";
+import { requireModuleAccess } from "@/lib/auth";
 import { getLocale } from "@/lib/i18n-server";
 import { buildPaymentPlan, paymentPlanLines, summarizePaymentPlan } from "@/lib/payment-plan";
 import { prisma } from "@/lib/prisma";
@@ -24,7 +24,7 @@ function resultUrl(type: "success" | "error", message: string) {
 
 async function createTreatmentAction(formData: FormData) {
   "use server";
-  const session = await requireSession();
+  const session = await requireModuleAccess("treatments");
   const parsed = treatmentSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
@@ -38,7 +38,7 @@ async function createTreatmentAction(formData: FormData) {
     redirect(resultUrl("error", "Seçilen hasta bulunamadı veya bu kliniğe ait değil."));
   }
 
-  const doctor = await prisma.user.findFirst({ where: { id: payload.doctorId, organizationId: session.organizationId, active: true }, select: { id: true } });
+  const doctor = await prisma.user.findFirst({ where: { id: payload.doctorId, organizationId: session.organizationId, active: true, role: { in: [Role.DOCTOR, Role.CLINIC_OWNER] } }, select: { id: true } });
 
   if (!doctor) {
     redirect(resultUrl("error", "Seçilen doktor bulunamadı veya aktif değil."));
@@ -78,7 +78,7 @@ async function createTreatmentAction(formData: FormData) {
 
 export default async function TreatmentsPage(props: { searchParams: Promise<{ success?: string; error?: string }> }) {
   const searchParams = await props.searchParams;
-  const session = await requireSession();
+  const session = await requireModuleAccess("treatments");
   const locale = await getLocale();
   const [treatments, patients, doctors] = await Promise.all([
     prisma.treatment.findMany({

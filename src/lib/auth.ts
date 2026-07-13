@@ -8,6 +8,7 @@ import { Role } from "@prisma/client";
 import { authAudience, authCookieName, authIssuer, getAuthSecret } from "@/lib/auth-config";
 import { isDemoMode } from "@/lib/demo-mode";
 import { prisma } from "@/lib/prisma";
+import { canAccess, type ModuleKey } from "@/lib/rbac";
 
 export { authCookieName };
 
@@ -132,6 +133,16 @@ export async function requireSession() {
   });
   if (!user) redirect("/login?error=inactive");
   return { ...session, name: user.name, email: user.email, role: user.role, branchId: user.branchId } satisfies AuthSession;
+}
+
+export async function requireModuleAccess(module: ModuleKey) {
+  const session = await requireSession();
+  if (!canAccess(session.role, module)) redirect("/dashboard?error=forbidden");
+  return session;
+}
+
+export async function requireTourismAccess() {
+  return requireModuleAccess("tourism");
 }
 
 export function canManageTrash(role: Role) {
