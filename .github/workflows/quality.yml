@@ -35,6 +35,13 @@ jobs:
       N8N_OUTBOUND_WEBHOOK_URL: https://automation.example.test/webhook/clinicnova
       N8N_OUTBOUND_SECRET: ci-outbound-webhook-secret-at-least-32-characters
       REQUIRE_LIVE_INTEGRATIONS: "true"
+      FILE_STORAGE_ROOT: /tmp/clinicnova-patient-files
+      FILE_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      FILE_AV_REQUIRED: "true"
+      FILE_AV_COMMAND: clamscan
+      PITR_ENABLED: "true"
+      BACKUP_REMOTE: ci-remote:clinicnova
+      RESTORE_TEST_SCHEDULED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
