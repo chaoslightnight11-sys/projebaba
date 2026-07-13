@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -20,6 +21,14 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
     private static final String HOME_URL = "file:///android_asset/index.html";
@@ -28,6 +37,7 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private Uri cameraPhotoUri;
     private boolean recoveringFromRemoteError = false;
+    private final SyncBridge syncBridge = new SyncBridge();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,6 +95,7 @@ public class MainActivity extends Activity {
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, false);
+        webView.addJavascriptInterface(syncBridge, "ClinicNovaNative");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -126,6 +137,10 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
+                if ("clinicnova".equalsIgnoreCase(scheme) && "sync".equalsIgnoreCase(uri.getHost())) {
+                    view.loadUrl(HOME_URL + "?sync=1");
+                    return true;
+                }
                 if ("https".equalsIgnoreCase(scheme)) {
                     return false;
                 }
@@ -140,6 +155,13 @@ public class MainActivity extends Activity {
                     Toast.makeText(MainActivity.this, "Bu bağlantı açılamadı.", Toast.LENGTH_SHORT).show();
                 }
                 return true;
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (url != null && url.startsWith("file:///android_asset/")) view.addJavascriptInterface(syncBridge, "ClinicNovaNative");
+                else view.removeJavascriptInterface("ClinicNovaNative");
+                super.onPageStarted(view, url, favicon);
             }
 
             @Override
@@ -165,6 +187,63 @@ public class MainActivity extends Activity {
             } catch (ActivityNotFoundException ignored) {
                 Toast.makeText(this, "İndirme bağlantısı açılamadı.", Toast.LENGTH_SHORT).show();
             }
+        });
+    }
+
+    private final class SyncBridge {
+        @JavascriptInterface
+        public void sync(String serverUrl, String batchJson) {
+            new Thread(() -> performSync(serverUrl, batchJson)).start();
+        }
+    }
+
+    private void performSync(String serverUrl, String batchJson) {
+        HttpURLConnection connection = null;
+        int status = 0;
+        String responseBody = "";
+        try {
+            URL base = new URL(serverUrl);
+            if (!"https".equalsIgnoreCase(base.getProtocol()) || base.getHost() == null || base.getHost().isEmpty()) {
+                throw new IllegalArgumentException("HTTPS sunucu adresi gerekli.");
+            }
+            if (batchJson == null || batchJson.getBytes(StandardCharsets.UTF_8).length > 4 * 1024 * 1024) {
+                throw new IllegalArgumentException("Senkronizasyon paketi çok büyük.");
+            }
+            URL endpoint = new URL(base.getProtocol(), base.getHost(), base.getPort(), "/api/mobile/sync");
+            connection = (HttpURLConnection) endpoint.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(15_000);
+            connection.setReadTimeout(30_000);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("User-Agent", "ClinicNovaAndroid/" + appVersion());
+            String cookies = CookieManager.getInstance().getCookie(serverUrl);
+            if (cookies != null && !cookies.isEmpty()) connection.setRequestProperty("Cookie", cookies);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(batchJson.getBytes(StandardCharsets.UTF_8));
+            }
+            status = connection.getResponseCode();
+            InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            if (stream != null) {
+                StringBuilder body = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) body.append(line);
+                }
+                responseBody = body.toString();
+            }
+        } catch (Exception error) {
+            status = 0;
+            responseBody = "{\"error\":" + JSONObject.quote(error.getMessage() == null ? "Sunucuya ulaşılamadı." : error.getMessage()) + "}";
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+        final int callbackStatus = status;
+        final String callbackBody = responseBody;
+        runOnUiThread(() -> {
+            if (webView == null) return;
+            webView.evaluateJavascript("window.ClinicNovaSyncResult && window.ClinicNovaSyncResult(" + callbackStatus + "," + JSONObject.quote(callbackBody) + ")", null);
         });
     }
 

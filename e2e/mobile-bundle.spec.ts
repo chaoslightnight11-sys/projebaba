@@ -151,19 +151,50 @@ test("bundled Android interface works offline", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("production Android bootstrap requires a secure ClinicNova server", async ({ page }) => {
+test("production Android starts with an empty persistent local workspace", async ({ page }) => {
   await page.goto(mobileUrl);
-  await expect(page.getByRole("heading", { name: "Kliniğinizi güvenle bağlayın." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kliniğiniz çevrimdışı da çalışır." })).toBeVisible();
   await expect(page.getByLabel("ClinicNova sunucu adresi")).toBeVisible();
   await expect(page.getByLabel("E-posta")).toBeHidden();
   await expect(page.getByLabel("Şifre")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Demo olarak incele" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Yerel çalışmayı başlat" })).toBeVisible();
 
   await page.getByLabel("ClinicNova sunucu adresi").fill("http://guvensiz.example.com");
-  await page.getByRole("button", { name: "Güvenli sisteme bağlan" }).click();
+  await page.getByRole("button", { name: "Yerel çalışmayı başlat" }).click();
   await expect(page.getByRole("status")).toContainText("Geçerli bir HTTPS ClinicNova adresi girin.");
   await expect(page).toHaveURL(mobileUrl);
 
-  await page.getByRole("button", { name: "Demo olarak incele" }).click();
+  await page.getByLabel("ClinicNova sunucu adresi").fill("");
+  await page.getByRole("button", { name: "Yerel çalışmayı başlat" }).click();
   await expect(page.getByRole("heading", { name: /Günaydın/ })).toBeVisible();
+  await page.getByRole("button", { name: "Hastalar", exact: true }).click();
+  await expect(page.locator("#patientList")).toContainText("Sonuç bulunamadı");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /Günaydın/ })).toBeVisible();
+});
+
+test("local Android records queue once and acknowledge server synchronization", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    (window as typeof window & { capturedSync?: unknown; ClinicNovaNative?: { sync: (url: string, batch: string) => void }; ClinicNovaSyncResult?: (status: number, body: string) => void }).ClinicNovaNative = {
+      sync(_url, batch) {
+        const parsed = JSON.parse(batch) as { operations: Array<{ operationId: string }> };
+        (window as typeof window & { capturedSync?: unknown }).capturedSync = parsed;
+        setTimeout(() => (window as typeof window & { ClinicNovaSyncResult?: (status: number, body: string) => void }).ClinicNovaSyncResult?.(200, JSON.stringify({ synced: parsed.operations.length, failed: 0, results: parsed.operations.map((item, index) => ({ operationId: item.operationId, status: "synced", serverEntityId: `server-${index}` })) })), 10);
+      }
+    };
+  });
+  await page.goto(mobileUrl);
+  await page.getByRole("button", { name: "Yerel çalışmayı başlat" }).click();
+  await page.getByRole("button", { name: "Hasta ekle" }).first().click();
+  await page.locator('#patientForm input[name="name"]').fill("Yerel Hasta");
+  await page.locator('#patientForm input[name="phone"]').fill("+90 555 222 33 44");
+  await page.getByRole("button", { name: "Hastayı kaydet" }).click();
+  await expect(page.getByRole("status")).toContainText("Hasta başarıyla kaydedildi");
+  await page.evaluate(() => localStorage.setItem("clinicnova.serverUrl", JSON.stringify("https://clinic.example.test")));
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { capturedSync?: { operations?: unknown[] } }).capturedSync?.operations?.length ?? 0)).toBe(1);
+  await expect(page.getByText("Senkronlandı", { exact: true })).toBeVisible();
+  const operation = await page.evaluate(() => (window as typeof window & { capturedSync?: { operations: Array<{ entityType: string; action: string; payload: { name: string } }> } }).capturedSync!.operations[0]);
+  expect(operation).toMatchObject({ entityType: "PATIENT", action: "CREATE", payload: { name: "Yerel Hasta" } });
 });

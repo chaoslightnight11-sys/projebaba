@@ -50,8 +50,8 @@ jobs:
       AUDIT_ANCHOR_REMOTE: ci-remote:clinicnova-audit
       OPS_ALERT_WEBHOOK_URL: https://automation.example.test/webhook/ops
       OPS_ALERT_WEBHOOK_SECRET: ci-ops-alert-secret-at-least-32-characters
-      MOBILE_MIN_VERSION: 1.3.0
-      MOBILE_APK_URL: https://download.example.test/ClinicNova-1.3.0.apk
+      MOBILE_MIN_VERSION: 1.4.0
+      MOBILE_APK_URL: https://download.example.test/ClinicNova-1.4.0.apk
       MOBILE_APK_SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     steps:
       - uses: actions/checkout@v4

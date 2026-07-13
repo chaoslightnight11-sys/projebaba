@@ -86,18 +86,27 @@
     { name: "Çöp Kutusu", detail: "30 gün saklanan silinmiş kayıtlar", icon: "i-box", color: "#a64458" }
   ];
 
-  let hotLeads = storage.get("clinicnova.hotLeads", defaultHotLeads);
-  let treatmentPlans = storage.get("clinicnova.treatmentPlans", defaultTreatmentPlans);
-  let stockItems = storage.get("clinicnova.stockItems", defaultStockItems);
-  let communicationLog = storage.get("clinicnova.communicationLog", defaultCommunicationLog);
-  let consentRecords = storage.get("clinicnova.consentRecords", defaultConsentRecords);
-  let trashItems = storage.get("clinicnova.trashItems", []);
+  const localDataWasMigrated = storage.get("clinicnova.localDataMigrated", false);
+  function localCollection(key, demoDefaults) {
+    const stored = storage.get(key, null);
+    if (demoMode) return stored ?? JSON.parse(JSON.stringify(demoDefaults));
+    if (!Array.isArray(stored)) return [];
+    if (localDataWasMigrated) return stored;
+    return stored.filter((item) => Number(item?.id) > 1_000_000_000_000);
+  }
+
+  let hotLeads = localCollection("clinicnova.hotLeads", defaultHotLeads);
+  let treatmentPlans = localCollection("clinicnova.treatmentPlans", defaultTreatmentPlans);
+  let stockItems = localCollection("clinicnova.stockItems", defaultStockItems);
+  let communicationLog = localCollection("clinicnova.communicationLog", defaultCommunicationLog);
+  let consentRecords = localCollection("clinicnova.consentRecords", defaultConsentRecords);
+  let trashItems = demoMode || localDataWasMigrated ? storage.get("clinicnova.trashItems", []) : [];
 
   const state = {
-    patients: storage.get("clinicnova.patients", defaultPatients),
-    appointments: storage.get("clinicnova.appointments", defaultAppointments),
-    transactions: storage.get("clinicnova.transactions", defaultTransactions),
-    treatmentHistory: storage.get("clinicnova.treatmentHistory", defaultTreatmentHistory),
+    patients: localCollection("clinicnova.patients", defaultPatients),
+    appointments: localCollection("clinicnova.appointments", defaultAppointments),
+    transactions: localCollection("clinicnova.transactions", defaultTransactions),
+    treatmentHistory: demoMode ? storage.get("clinicnova.treatmentHistory", defaultTreatmentHistory) : storage.get("clinicnova.treatmentHistory", {}),
     patientMedia: storage.get("clinicnova.patientMedia", {}),
     selectedDate: todayIso,
     patientFilter: "ALL",
@@ -105,6 +114,17 @@
     transactionFilter: "ALL",
     activeView: "home"
   };
+  if (!demoMode && !localDataWasMigrated) {
+    const patientIds = new Set(state.patients.map((item) => String(item.id)));
+    state.treatmentHistory = Object.fromEntries(Object.entries(state.treatmentHistory).filter(([id]) => patientIds.has(id)));
+    state.patientMedia = Object.fromEntries(Object.entries(state.patientMedia).filter(([id]) => patientIds.has(id)));
+  }
+  storage.set("clinicnova.localDataMigrated", true);
+  const deviceId = storage.get("clinicnova.deviceId", null) || (crypto.randomUUID?.() ?? `device-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  storage.set("clinicnova.deviceId", deviceId);
+  let syncQueue = storage.get("clinicnova.syncQueue", []);
+  let syncMap = storage.get("clinicnova.syncMap", {});
+  let syncing = false;
 
   function localDate(date) {
     const year = date.getFullYear();
@@ -139,6 +159,65 @@
     storage.set("clinicnova.communicationLog", communicationLog);
     storage.set("clinicnova.consentRecords", consentRecords);
     storage.set("clinicnova.trashItems", trashItems);
+  }
+  if (!demoMode && !localDataWasMigrated) saveData();
+
+  function operationId() {
+    return crypto.randomUUID?.() ?? `op-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function persistSyncState() {
+    storage.set("clinicnova.syncQueue", syncQueue);
+    storage.set("clinicnova.syncMap", syncMap);
+    updateNetworkBadge();
+  }
+
+  function queueCreate(entityType, clientId, payload) {
+    if (demoMode) return;
+    const id = String(clientId);
+    const pending = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
+    if (pending) pending.payload = payload;
+    else syncQueue.push({ operationId: operationId(), entityType, action: "CREATE", clientId: id, createdAt: new Date().toISOString(), payload });
+    persistSyncState();
+  }
+
+  function queueUpdate(entityType, clientId, payload) {
+    if (demoMode) return;
+    const id = String(clientId);
+    const pendingCreate = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
+    if (pendingCreate) pendingCreate.payload = { ...pendingCreate.payload, ...payload };
+    else syncQueue.push({ operationId: operationId(), entityType, action: "UPDATE", clientId: id, createdAt: new Date().toISOString(), payload });
+    persistSyncState();
+  }
+
+  function queueDelete(entityType, clientId, payload = {}) {
+    if (demoMode) return;
+    const id = String(clientId);
+    const hadPendingCreate = syncQueue.some((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
+    syncQueue = syncQueue.filter((item) => !(item.entityType === entityType && item.clientId === id));
+    if (!hadPendingCreate || syncMap[`${entityType}:${id}`]) syncQueue.push({ operationId: operationId(), entityType, action: "DELETE", clientId: id, createdAt: new Date().toISOString(), payload });
+    persistSyncState();
+  }
+
+  function patientPayload(patient) {
+    return { name: patient.name, phone: patient.phone, email: patient.email || "", tag: patient.tag || "NEW", treatment: patient.treatment || "", note: patient.note || "" };
+  }
+
+  function appointmentPayload(appointment) {
+    return { patientId: String(appointment.patientId), date: appointment.date, time: appointment.time, duration: appointment.duration, treatment: appointment.treatment, doctor: appointment.doctor, room: appointment.room, status: appointment.status };
+  }
+
+  function paymentPayload(payment) {
+    const method = String(payment.detail || "").split(" · ").pop() || "CARD";
+    return { patientId: String(payment.patientId), amount: payment.amount, totalAmount: payment.totalAmount || payment.amount, remainingAmount: outstandingAmount(payment), method, description: payment.detail, isDeposit: outstandingAmount(payment) > 0 };
+  }
+
+  function queueExistingLocalRecords() {
+    if (demoMode || storage.get("clinicnova.syncBootstrapComplete", false)) return;
+    state.patients.filter((item) => Number(item.id) > 1_000_000_000_000).forEach((item) => queueCreate("PATIENT", item.id, patientPayload(item)));
+    state.appointments.filter((item) => Number(item.id) > 1_000_000_000_000).forEach((item) => queueCreate("APPOINTMENT", item.id, appointmentPayload(item)));
+    state.transactions.filter((item) => item.patientId && Number(item.id) > 1_000_000_000_000).forEach((item) => queueCreate("PAYMENT", item.id, paymentPayload(item)));
+    storage.set("clinicnova.syncBootstrapComplete", true);
   }
 
   function moveToTrash(kind, label, payload) {
@@ -317,7 +396,7 @@
       <label class="field">E-posta<input name="email" type="email" autocomplete="email" placeholder="hasta@mail.com" /></label>
       <div class="modal-grid two"><label class="field">Etiket<select name="tag"><option value="NEW">Yeni</option><option value="ACTIVE">Aktif</option><option value="VIP">VIP</option></select></label><label class="field">İlgilendiği tedavi<input name="treatment" placeholder="Muayene" /></label></div>
       <label class="field">Not<textarea name="note" placeholder="Alerji, iletişim tercihi veya ilk görüşme notu"></textarea></label>
-      <p class="modal-note">Kaydedilen bilgiler bu çevrimdışı APK sürümünde yalnızca cihazınızda tutulur.</p>
+      <p class="modal-note">Kayıt hemen bu cihazda saklanır; sunucu bağlandığında otomatik eşitleme kuyruğuna alınır.</p>
       <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Hastayı kaydet</button></div>
     </form>`);
   }
@@ -343,7 +422,7 @@
       <div class="modal-grid two"><label class="field">Şimdi alınan<input name="amount" type="number" inputmode="decimal" min="1" step="1" value="18000" required /></label><label class="field">Ödeme yöntemi<select name="method"><option>Kart</option><option>Nakit</option><option>Transfer</option><option>Online</option></select></label></div>
       <div class="modal-grid two"><label class="field">Toplam taksit<select name="installmentCount"><option value="1">Tek çekim</option><option value="2">2 taksit</option><option value="3">3 taksit</option><option value="4" selected>4 taksit</option><option value="6">6 taksit</option><option value="9">9 taksit</option><option value="12">12 taksit</option></select></label><label class="field">Ödenen taksit<input name="paidInstallments" type="number" min="0" value="1" /></label></div>
       <label class="field">Not<input name="description" value="Tedavi planı tahsilatı" required /></label>
-      <p class="modal-note">Bu çevrimdışı sürümde tahsilat cihazda saklanır. Canlı sisteme bağlandığınızda kayıt merkezi finans panelinde tutulur.</p>
+      <p class="modal-note">Tahsilat hemen cihazda saklanır; sunucu bağlandığında merkezi finans paneline eşitlenir.</p>
       <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Ödemeyi kaydet</button></div>
     </form>`);
   }
@@ -380,18 +459,18 @@
 
   function openConnection() {
     const saved = storage.get("clinicnova.serverUrl", "");
-    openModal("CANLI BAĞLANTI", "Sunucuya bağlan", `<form id="connectionForm" class="modal-grid">
-      <p class="modal-note">ClinicNova web sunucunuz yayınlandığında HTTPS adresini girin. Uygulama aynı güvenli oturum ve dashboard’u mobil kabuk içinde açar.</p>
+    openModal("SENKRONİZASYON", "Sunucuya bağlan", `<form id="connectionForm" class="modal-grid">
+      <p class="modal-note">Veriler önce bu cihazda kaydedilir. HTTPS sunucunuzu bağladıktan sonra bekleyen ${syncQueue.length} işlem klinik hesabınıza gönderilir; tekrar denemeler çift kayıt oluşturmaz.</p>
       <label class="field">Sunucu adresi<input name="url" type="url" value="${escapeHtml(saved)}" placeholder="https://clinic.example.com" required /></label>
-      <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Bağlan</button></div>
+      <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Giriş yap ve eşitle</button></div>
     </form>`);
   }
 
   function openSecurity() {
     openModal("GÜVENLİK", "Veri ve uygulama", `<div class="modal-grid">
-      <p class="modal-note"><strong>Çevrimdışı demo modu</strong><br/>Eklediğiniz örnek hasta ve randevular Android WebView yerel depolamasında saklanır. Bir sunucuya bağlanmadan cihazdan dışarı gönderilmez.</p>
-      <p class="modal-note"><strong>Canlı kullanım</strong><br/>Gerçek hasta verisi için TLS, güçlü oturum anahtarı, yönetilen veritabanı, şifreli yedek ve klinik KVKK/GDPR süreçleri zorunludur.</p>
-      <button class="button button-secondary" data-reset-demo>Demo verilerini sıfırla</button>
+      <p class="modal-note"><strong>Yerel çalışma</strong><br/>Hasta, randevu ve tahsilat kayıtları bağlantı olmasa da cihazın uygulama alanında kalıcı saklanır. Bekleyen işlem: ${syncQueue.length}.</p>
+      <p class="modal-note"><strong>Sunucu eşitlemesi</strong><br/>Yalnızca bağladığınız HTTPS ClinicNova sunucusuna, giriş yaptığınız klinik hesabı kapsamında gönderilir.</p>
+      <button class="button button-secondary" data-clear-local>Yerel verileri temizle</button>
     </div>`);
   }
 
@@ -441,14 +520,14 @@
       "Sağlık turizmi": `<div class="list-stack">${hotLeads.map((lead) => `<article class="opportunity-card record-deletable"><span class="score-badge">${lead.score}</span><span class="patient-copy"><strong>${escapeHtml(lead.name)}</strong><small>${escapeHtml(lead.country)} · ${escapeHtml(lead.treatment)}</small></span><a class="mini-action" href="tel:${escapeHtml(lead.phone.replace(/\s+/g, ""))}">Ara</a><button class="delete-button" data-delete-record="${lead.id}" data-record-kind="hotLeads" aria-label="${escapeHtml(lead.name)} lead kaydını sil">Sil</button></article>`).join("") || `<p class="empty-inline">Lead kaydı yok.</p>`}</div>`,
       "Stok": `<div class="list-stack">${stockItems.map((item) => { const critical = item.amount < item.minimum; return `<article class="offline-record record-deletable"><span class="transaction-icon ${critical ? "expense" : ""}">${critical ? "!" : "✓"}</span><span class="patient-copy"><strong>${escapeHtml(item.name)}</strong><small>Minimum ${item.minimum} ${escapeHtml(item.unit)}</small></span><span class="record-value ${critical ? "critical" : ""}">${item.amount}<small>${escapeHtml(item.unit)}</small></span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="stockItems" aria-label="${escapeHtml(item.name)} stok kaydını sil">Sil</button></article>`; }).join("") || `<p class="empty-inline">Stok kaydı yok.</p>`}</div>`,
       "İletişim": `<div class="list-stack">${communicationLog.map((item) => `<article class="offline-record record-deletable"><span class="record-channel">${escapeHtml(item.channel.slice(0, 1))}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)} · ${escapeHtml(item.channel)}</strong><small>${escapeHtml(item.message)}</small></span><span class="record-state">${escapeHtml(item.status)}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="communicationLog" aria-label="${escapeHtml(item.patient)} iletişim kaydını sil">Sil</button></article>`).join("") || `<p class="empty-inline">İletişim kaydı yok.</p>`}<p class="modal-note">Çevrimdışı modda geçmiş ve taslaklar görüntülenir. Gerçek WhatsApp, SMS ve e-posta gönderimi canlı bağlantı ister.</p></div>`,
-      "Raporlar": `<div class="modal-grid"><div class="finance-stats"><article class="finance-stat"><span>Tahsilat</span><strong>${currency(paidIncome)}</strong><small>Demo hareketleri</small></article><article class="finance-stat"><span>Net akış</span><strong>${currency(paidIncome - expenses)}</strong><small>Gelir − gider</small></article></div><div class="finance-stats"><article class="finance-stat"><span>Hasta</span><strong>${state.patients.length}</strong><small>Yerel kayıt</small></article><article class="finance-stat"><span>Randevu</span><strong>${state.appointments.length}</strong><small>Toplam plan</small></article></div><button class="button button-primary" data-go="finance">Finans ayrıntısını aç</button></div>`,
-      "Dijital onam": `<div class="list-stack">${consentRecords.map((item) => `<article class="offline-record record-deletable"><span class="transaction-icon ${item.status === "İmzalandı" ? "" : "pending"}">${item.status === "İmzalandı" ? "✓" : "!"}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.form)} · ${escapeHtml(item.date)}</small></span><span class="record-state">${escapeHtml(item.status)}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="consentRecords" aria-label="${escapeHtml(item.patient)} onam kaydını sil">Sil</button></article>`).join("") || `<p class="empty-inline">Onam kaydı yok.</p>`}<p class="modal-note">Demo kayıtları inceleme içindir. Kimlik doğrulamalı imza gönderimi ve yasal kayıt canlı sistemde yapılır.</p></div>`,
+      "Raporlar": `<div class="modal-grid"><div class="finance-stats"><article class="finance-stat"><span>Tahsilat</span><strong>${currency(paidIncome)}</strong><small>Yerel hareketler</small></article><article class="finance-stat"><span>Net akış</span><strong>${currency(paidIncome - expenses)}</strong><small>Gelir − gider</small></article></div><div class="finance-stats"><article class="finance-stat"><span>Hasta</span><strong>${state.patients.length}</strong><small>Yerel kayıt</small></article><article class="finance-stat"><span>Randevu</span><strong>${state.appointments.length}</strong><small>Toplam plan</small></article></div><button class="button button-primary" data-go="finance">Finans ayrıntısını aç</button></div>`,
+      "Dijital onam": `<div class="list-stack">${consentRecords.map((item) => `<article class="offline-record record-deletable"><span class="transaction-icon ${item.status === "İmzalandı" ? "" : "pending"}">${item.status === "İmzalandı" ? "✓" : "!"}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.form)} · ${escapeHtml(item.date)}</small></span><span class="record-state">${escapeHtml(item.status)}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="consentRecords" aria-label="${escapeHtml(item.patient)} onam kaydını sil">Sil</button></article>`).join("") || `<p class="empty-inline">Onam kaydı yok.</p>`}<p class="modal-note">Kimlik doğrulamalı imza gönderimi ve yasal sunucu kaydı bağlantı gerektirir.</p></div>`,
       "Çöp Kutusu": `<div class="modal-grid"><p class="modal-note">Silinen kayıtlar 30 gün burada saklanır. Süre dolunca otomatik ve kalıcı olarak temizlenir.</p><div class="list-stack">${trashItems.map((item) => `<article class="trash-record"><span class="record-icon">♻</span><span class="patient-copy"><strong>${escapeHtml(item.label)}</strong><small>${trashDaysLeft(item)} gün kaldı</small></span><button class="mini-action" data-restore-trash="${item.id}">Geri yükle</button><button class="delete-button" data-purge-trash="${item.id}" aria-label="${escapeHtml(item.label)} kaydını kalıcı sil">Kalıcı sil</button></article>`).join("") || `<p class="empty-inline">Çöp Kutusu boş.</p>`}</div>${trashItems.length ? `<button class="button button-secondary" data-empty-trash>Çöp Kutusunu boşalt</button>` : ""}</div>`
     };
     const routes = { "Tedavi planları": "treatment-plans", "Sağlık turizmi": "tourism/leads", "Stok": "stocks", "İletişim": "communication", "Raporlar": "reports", "Dijital onam": "consents" };
     const serverUrl = storage.get("clinicnova.serverUrl", "");
     const liveButton = serverUrl ? `<a class="button button-secondary" href="${escapeHtml(serverUrl.replace(/\/$/, ""))}/dashboard/${routes[name] || ""}">Canlı panelde aç</a>` : "";
-    openModal("ÇEVRİMDIŞI DEMO", name, `<div class="modal-grid">${moduleContent[name] || `<p class="modal-note">Bu modül için demo bulunmuyor.</p>`}${liveButton}</div>`);
+    openModal("YEREL ÇALIŞMA", name, `<div class="modal-grid">${moduleContent[name] || `<p class="modal-note">Bu modül henüz yerel kayda sahip değil.</p>`}${liveButton}</div>`);
   }
 
   function openNotifications() {
@@ -465,7 +544,8 @@
     const badge = $("#networkBadge");
     const online = navigator.onLine;
     badge.classList.toggle("offline", !online);
-    $("span", badge).textContent = online ? "Çevrimiçi" : "Çevrimdışı hazır";
+    const connected = Boolean(storage.get("clinicnova.serverUrl", ""));
+    $("span", badge).textContent = syncQueue.length ? `${syncQueue.length} kayıt bekliyor` : connected && online ? "Senkronlandı" : online ? "Yerel kayıt" : "Çevrimdışı hazır";
   }
 
   function showApp() {
@@ -479,10 +559,10 @@
     $("#loginScreen").hidden = false;
   }
 
-  function openLocalPreview() {
-    storage.set("clinicnova.previewSession", { createdAt: Date.now() });
+  function openLocalWorkspace() {
+    storage.set("clinicnova.localSession", { createdAt: Date.now() });
     showApp();
-    showToast("Örnek verilerle demo açıldı.");
+    showToast("Yerel çalışma açıldı. Kayıtlar bu cihazda saklanacak.");
   }
 
   function normalizedServerUrl(value) {
@@ -498,14 +578,52 @@
     try {
       const serverUrl = normalizedServerUrl(value);
       storage.set("clinicnova.serverUrl", serverUrl);
-      showToast("Güvenli ClinicNova sunucusu açılıyor…");
-      setTimeout(() => { window.location.href = `${serverUrl}/login?next=%2Fdashboard&mobile=android`; }, 350);
+      showToast("Sunucu hesabı girişi açılıyor…");
+      setTimeout(() => { window.location.href = `${serverUrl}/login?next=%2Fmobile-connect&mobile=android`; }, 350);
       return true;
     } catch {
       showToast("Geçerli bir HTTPS ClinicNova adresi girin.");
       return false;
     }
   }
+
+  function syncPending() {
+    if (demoMode || syncing || !syncQueue.length || !navigator.onLine) return;
+    const serverUrl = storage.get("clinicnova.serverUrl", "");
+    if (!serverUrl || !window.ClinicNovaNative?.sync) return;
+    syncing = true;
+    updateNetworkBadge();
+    const operations = syncQueue.slice(0, 50);
+    window.ClinicNovaNative.sync(serverUrl, JSON.stringify({ deviceId, operations }));
+  }
+
+  window.ClinicNovaSyncResult = (status, responseText) => {
+    syncing = false;
+    let response = {};
+    try { response = JSON.parse(responseText || "{}"); } catch { response = {}; }
+    if (status === 401 || status === 403 || (status === 200 && !Array.isArray(response.results))) {
+      showToast("Sunucu oturumu gerekli. Sunucuya bağlan bölümünden giriş yapın.");
+      updateNetworkBadge();
+      return;
+    }
+    if (status < 200 || status >= 300) {
+      showToast(response.error || "Sunucuya ulaşılamadı; kayıtlar cihazda bekliyor.");
+      updateNetworkBadge();
+      return;
+    }
+    const byId = new Map(syncQueue.map((item) => [item.operationId, item]));
+    const syncedIds = new Set();
+    for (const result of response.results || []) {
+      if (result.status !== "synced") continue;
+      syncedIds.add(result.operationId);
+      const operation = byId.get(result.operationId);
+      if (operation && result.serverEntityId) syncMap[`${operation.entityType}:${operation.clientId}`] = result.serverEntityId;
+    }
+    syncQueue = syncQueue.filter((item) => !syncedIds.has(item.operationId));
+    persistSyncState();
+    showToast(response.failed ? `${response.synced} kayıt eşitlendi, ${response.failed} kayıt bekliyor.` : `${response.synced} kayıt sunucuya eşitlendi.`);
+    if (syncQueue.length && response.synced > 0) setTimeout(syncPending, 300);
+  };
 
   function configureEntryMode() {
     if (demoMode) {
@@ -525,22 +643,26 @@
     }
 
     $("#serverUrlField").hidden = false;
-    $("#previewDemoButton").hidden = false;
-    $("#serverUrl").required = true;
+    $("#previewDemoButton").hidden = true;
+    $("#serverUrl").required = false;
     $("#demoLoginFields").hidden = true;
     $("#loginEmail").required = false;
     $("#loginPassword").required = false;
     const configuredUrl = mobileConfig.serverUrl || storage.get("clinicnova.serverUrl", "");
     $("#serverUrl").value = configuredUrl;
-    const offlineFallback = new URLSearchParams(window.location.search).has("offline");
-    if (configuredUrl && !offlineFallback) connectToServer(configuredUrl);
+    $("#loginTitle").textContent = "Kliniğiniz çevrimdışı da çalışır.";
+    $("#loginDescription").textContent = "Kayıtları önce bu cihazda saklayın; sunucuyu bağladığınızda otomatik eşitleyin.";
+    $("#loginSubmitLabel").textContent = configuredUrl ? "Sunucuya giriş yap ve eşitle" : "Yerel çalışmayı başlat";
+    $("#loginSecureNote").textContent = "Yerel kayıtlar uygulamanın özel alanında tutulur ve yalnızca seçtiğiniz HTTPS sunucusuna eşitlenir.";
   }
 
   $("#todayLabel").textContent = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" }).format(today);
+  $("#versionLabel").textContent = `ClinicNova Android · Sürüm ${mobileConfig.appVersion || "yerel"}`;
   $("#loginForm").addEventListener("submit", (event) => {
     event.preventDefault();
     if (!demoMode) {
-      connectToServer($("#serverUrl").value);
+      const serverUrl = $("#serverUrl").value.trim();
+      if (serverUrl) connectToServer(serverUrl); else openLocalWorkspace();
       return;
     }
     const email = $("#loginEmail").value.trim();
@@ -550,7 +672,7 @@
     showApp();
     showToast("Hoş geldiniz, Derya.");
   });
-  $("#previewDemoButton").addEventListener("click", openLocalPreview);
+  $("#previewDemoButton").addEventListener("click", openLocalWorkspace);
 
   document.addEventListener("click", (event) => {
     const target = event.target.closest("button, [data-go], [data-action]");
@@ -569,9 +691,12 @@
         state.transactions.push(...payload.transactions);
         if (payload.treatmentHistory?.length) state.treatmentHistory[payload.patient.id] = payload.treatmentHistory;
         if (payload.media?.length) state.patientMedia[payload.patient.id] = payload.media;
+        queueCreate("PATIENT", payload.patient.id, patientPayload(payload.patient));
+        payload.appointments.forEach((item) => queueCreate("APPOINTMENT", item.id, appointmentPayload(item)));
+        payload.transactions.filter((item) => item.patientId).forEach((item) => queueCreate("PAYMENT", item.id, paymentPayload(item)));
       }
-      if (trashItem.kind === "appointment") state.appointments.push(payload);
-      if (trashItem.kind === "transaction") state.transactions.unshift(payload);
+      if (trashItem.kind === "appointment") { state.appointments.push(payload); queueCreate("APPOINTMENT", payload.id, appointmentPayload(payload)); }
+      if (trashItem.kind === "transaction") { state.transactions.unshift(payload); if (payload.patientId) queueCreate("PAYMENT", payload.id, paymentPayload(payload)); }
       if (trashItem.kind === "treatmentHistory") (state.treatmentHistory[payload.patientId] ||= []).splice(payload.index, 0, payload.item);
       if (trashItem.kind === "media") (state.patientMedia[payload.patientId] ||= []).unshift(payload.item);
       if (trashItem.kind === "treatmentPlans") treatmentPlans.unshift(payload);
@@ -610,11 +735,16 @@
       if (kind === "hotLeads") renderDashboard();
       openModule(moduleByKind[kind]); modalOpener = originalOpener; showToast("Kayıt silindi."); return;
     }
-    if (target.dataset.deletePatient) {
+      if (target.dataset.deletePatient) {
       const patientId = Number(target.dataset.deletePatient);
       const patient = patientById(patientId);
       if (!patient || !window.confirm(`${patient.name} ve bağlı randevu, ödeme, tedavi ve fotoğraf kayıtları silinsin mi?`)) return;
-      moveToTrash("patientBundle", patient.name, { patient, appointments: state.appointments.filter((item) => item.patientId === patientId), transactions: state.transactions.filter((item) => item.patientId === patientId), treatmentHistory: state.treatmentHistory[patientId] || [], media: state.patientMedia[patientId] || [] });
+      const linkedAppointments = state.appointments.filter((item) => item.patientId === patientId);
+      const linkedTransactions = state.transactions.filter((item) => item.patientId === patientId);
+      moveToTrash("patientBundle", patient.name, { patient, appointments: linkedAppointments, transactions: linkedTransactions, treatmentHistory: state.treatmentHistory[patientId] || [], media: state.patientMedia[patientId] || [] });
+      linkedAppointments.forEach((item) => queueDelete("APPOINTMENT", item.id));
+      linkedTransactions.forEach((item) => queueDelete("PAYMENT", item.id));
+      queueDelete("PATIENT", patientId);
       state.patients = state.patients.filter((item) => item.id !== patientId);
       state.appointments = state.appointments.filter((item) => item.patientId !== patientId);
       state.transactions = state.transactions.filter((item) => item.patientId !== patientId);
@@ -627,6 +757,7 @@
       if (!window.confirm("Bu randevu silinsin mi?")) return;
       const deletedAppointment = state.appointments.find((item) => item.id === appointmentId);
       if (deletedAppointment) moveToTrash("appointment", `${patientById(deletedAppointment.patientId)?.name || "Hasta"} randevusu`, deletedAppointment);
+      if (deletedAppointment) queueDelete("APPOINTMENT", appointmentId);
       state.appointments = state.appointments.filter((item) => item.id !== appointmentId);
       saveData(); renderAll(); closeModal(); showToast("Randevu silindi."); return;
     }
@@ -636,6 +767,7 @@
       if (!window.confirm("Bu finans kaydı silinsin mi?")) return;
       const deletedTransaction = state.transactions.find((item) => item.id === transactionId);
       if (deletedTransaction) moveToTrash("transaction", `${deletedTransaction.name} · ${deletedTransaction.detail}`, deletedTransaction);
+      if (deletedTransaction?.patientId) queueDelete("PAYMENT", transactionId);
       state.transactions = state.transactions.filter((item) => item.id !== transactionId);
       saveData(); renderAll();
       if (patientId && patientById(patientId)) openPatientDetail(patientId); else closeModal();
@@ -669,8 +801,15 @@
     if (target.hasAttribute("data-close-modal")) return closeModal();
     if (target.dataset.saveAppointment) {
       const appointment = state.appointments.find((item) => item.id === Number(target.dataset.saveAppointment));
-      if (appointment) appointment.status = $("#appointmentStatus").value;
+      if (appointment) { appointment.status = $("#appointmentStatus").value; queueUpdate("APPOINTMENT", appointment.id, appointmentPayload(appointment)); }
       saveData(); renderAll(); closeModal(); showToast("Randevu durumu güncellendi."); return;
+    }
+    if (target.hasAttribute("data-clear-local")) {
+      if (!window.confirm("Bu cihazdaki tüm yerel klinik kayıtları ve bekleyen eşitleme işlemleri silinsin mi?")) return;
+      state.patients = []; state.appointments = []; state.transactions = []; state.treatmentHistory = {}; state.patientMedia = {};
+      hotLeads = []; treatmentPlans = []; stockItems = []; communicationLog = []; consentRecords = []; trashItems = [];
+      syncQueue = []; syncMap = {}; storage.set("clinicnova.syncBootstrapComplete", true);
+      saveData(); persistSyncState(); renderAll(); closeModal(); showToast("Yerel kayıtlar temizlendi."); return;
     }
     if (target.hasAttribute("data-reset-demo")) {
       state.patients = JSON.parse(JSON.stringify(defaultPatients));
@@ -699,7 +838,7 @@
     if (action === "transaction-filter") return openTransactionFilter();
     if (action === "connect") return openConnection();
     if (action === "security") return openSecurity();
-    if (action === "logout") { storage.set("clinicnova.session", null); storage.set("clinicnova.previewSession", null); closeModal(); showLogin(); showToast("Oturum kapatıldı."); return; }
+    if (action === "logout") { storage.set("clinicnova.session", null); storage.set("clinicnova.localSession", null); storage.set("clinicnova.previewSession", null); closeModal(); showLogin(); showToast("Oturum kapatıldı."); return; }
   });
 
   $("#patientSearch").addEventListener("input", (event) => { state.patientQuery = event.target.value; renderPatients(); });
@@ -729,7 +868,7 @@
     document.documentElement.classList.toggle("dark");
     storage.set("clinicnova.theme", document.documentElement.classList.contains("dark") ? "dark" : "light");
   });
-  window.addEventListener("online", updateNetworkBadge);
+  window.addEventListener("online", () => { updateNetworkBadge(); syncPending(); });
   window.addEventListener("offline", updateNetworkBadge);
   document.addEventListener("keydown", (event) => {
     if ($("#modalBackdrop").hidden) return;
@@ -747,19 +886,23 @@
     if (event.target.id === "patientForm") {
       event.preventDefault();
       const form = new FormData(event.target);
-      state.patients.unshift({
+      const patient = {
         id: Date.now(), name: form.get("name").trim(), phone: form.get("phone").trim(), email: form.get("email").trim(),
-        tag: form.get("tag"), lastVisit: "Yeni kayıt", treatment: form.get("treatment").trim() || "Muayene", color: state.patients.length % palette.length
-      });
+        tag: form.get("tag"), lastVisit: "Yeni kayıt", treatment: form.get("treatment").trim() || "Muayene", note: form.get("note").trim(), color: state.patients.length % palette.length
+      };
+      state.patients.unshift(patient);
+      queueCreate("PATIENT", patient.id, patientPayload(patient));
       saveData(); renderAll(); closeModal(); navigate("patients"); showToast("Hasta başarıyla kaydedildi.");
     }
     if (event.target.id === "appointmentForm") {
       event.preventDefault();
       const form = new FormData(event.target);
-      state.appointments.push({
+      const appointment = {
         id: Date.now(), patientId: Number(form.get("patientId")), date: form.get("date"), time: form.get("time"), duration: Number(form.get("duration")),
         treatment: form.get("treatment").trim(), doctor: form.get("doctor"), room: form.get("room"), status: "PLANNED"
-      });
+      };
+      state.appointments.push(appointment);
+      queueCreate("APPOINTMENT", appointment.id, appointmentPayload(appointment));
       state.selectedDate = form.get("date"); saveData(); renderAll(); closeModal(); navigate("appointments"); showToast("Randevu başarıyla oluşturuldu.");
     }
     if (event.target.id === "paymentForm") {
@@ -774,10 +917,12 @@
       const installmentCount = Math.max(1, Number(form.get("installmentCount")) || 1);
       const paidInstallments = Math.min(installmentCount, Math.max(0, Number(form.get("paidInstallments")) || 0));
       const remainingAmount = Math.max(0, totalAmount - amount);
-      state.transactions.unshift({
+      const payment = {
         id: Date.now(), patientId: patient.id, name: patient.name, detail: `${form.get("description").trim()} · ${form.get("method")}`,
         amount, totalAmount, remainingAmount, installmentCount, paidInstallments, components, type: "income", status: remainingAmount > 0 ? "PENDING" : "PAID", date: "Şimdi"
-      });
+      };
+      state.transactions.unshift(payment);
+      queueCreate("PAYMENT", payment.id, paymentPayload(payment));
       state.transactionFilter = "ALL";
       saveData(); renderAll(); closeModal(); navigate("finance"); showToast(remainingAmount > 0 ? `Ödeme kaydedildi · ${currency(remainingAmount)} bakiye kaldı.` : "Ödeme tamamen tahsil edildi.");
     }
@@ -789,6 +934,7 @@
   });
 
   purgeExpiredTrash();
+  queueExistingLocalRecords();
   configureEntryMode();
   if (storage.get("clinicnova.theme", "light") === "dark") document.documentElement.classList.add("dark");
   $("#notificationDot").hidden = storage.get("clinicnova.notificationsRead", false);
@@ -807,5 +953,7 @@
   if (demoMode && mobileConfig.autoOpenDemo) {
     storage.set("clinicnova.previewSession", { createdAt: Date.now(), source: "ios-file-demo" });
     showApp();
-  } else if ((demoMode && storage.get("clinicnova.session", null)) || storage.get("clinicnova.previewSession", null)) showApp(); else showLogin();
+  } else if ((demoMode && storage.get("clinicnova.session", null)) || storage.get("clinicnova.localSession", null) || storage.get("clinicnova.previewSession", null)) showApp(); else showLogin();
+  if (new URLSearchParams(window.location.search).has("sync")) setTimeout(syncPending, 500);
+  else setTimeout(syncPending, 1500);
 })();

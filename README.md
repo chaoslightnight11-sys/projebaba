@@ -68,7 +68,7 @@ MOBILE_MODE=production MOBILE_SERVER_URL=https://app.example.com npm run android
 npm run android:verify
 ```
 
-Sunucu adresi verilmezse üretim APK’sı ilk açılışta kullanıcıdan HTTPS ClinicNova adresini ister. Demo paketi ayrı ve açık biçimde üretilir: `MOBILE_MODE=demo npm run android:build`.
+Üretim APK’sı sunucu olmadan boş yerel klinik alanıyla çalışır. HTTPS ClinicNova adresi bağlanıp hesap girişi tamamlanınca bekleyen hasta, randevu ve tahsilat işlemleri idempotent biçimde sunucuya eşitlenir. Demo paketi yalnız test/gösterim için ayrı üretilir: `MOBILE_MODE=demo npm run android:build`.
 
 ## Ticari kullanım sınırı
 

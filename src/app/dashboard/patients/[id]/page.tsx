@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
-import { notFound, redirect } from "next/navigation";
-import { Save, Trash2, Users } from "lucide-react";
+import { notFound } from "next/navigation";
+import { Save, Users } from "lucide-react";
+import { DeletePatientButton } from "@/components/dashboard/delete-patient-button";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { PatientFiles, type PatientFileMeta } from "@/components/dashboard/patient-files";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { canDeletePatientFile, canManageTrash, requireSession } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
-import { deletePatient, getPatientById, updatePatient } from "@/lib/services/patientService";
+import { getPatientById, updatePatient } from "@/lib/services/patientService";
 import { prisma } from "@/lib/prisma";
 import { patientSchema } from "@/lib/validations/patient";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
@@ -25,15 +26,6 @@ async function updatePatientAction(id: string, formData: FormData) {
   const payload = patientSchema.parse(Object.fromEntries(formData));
   await updatePatient(session.organizationId, id, payload);
   revalidatePath(`/dashboard/patients/${id}`);
-}
-
-async function deletePatientAction(id: string) {
-  "use server";
-  const session = await requireSession();
-  if (!canManageTrash(session.role)) redirect(`/dashboard/patients/${id}?error=forbidden`);
-  await deletePatient(session.organizationId, id, session.userId, session.branchId);
-  revalidatePath("/dashboard/patients");
-  redirect("/dashboard/patients");
 }
 
 export default async function PatientDetailPage(props: { params: Promise<{ id: string }> }) {
@@ -142,12 +134,7 @@ export default async function PatientDetailPage(props: { params: Promise<{ id: s
                 </Button>
               </div>
             </form>
-            {canManageTrash(session.role) ? <form action={deletePatientAction.bind(null, patient.id)} className="mt-3">
-              <Button type="submit" variant="destructive">
-                <Trash2 className="h-4 w-4" />
-                Hastayı Sil
-              </Button>
-            </form> : null}
+            {canManageTrash(session.role) ? <DeletePatientButton patientId={patient.id} /> : null}
           </CardContent>
         </Card>
 

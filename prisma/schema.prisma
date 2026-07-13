@@ -295,33 +295,34 @@ enum IntegrationLogStatus {
 }
 
 model Organization {
-  id              String             @id @default(cuid())
-  name            String
-  slug            String             @unique
-  plan            String             @default("Klinik")
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  branches        Branch[]
-  users           User[]
-  patients        Patient[]
-  appointments    Appointment[]
-  treatmentPlans  TreatmentPlan[]
-  treatments      Treatment[]
-  payments        Payment[]
-  invoices        Invoice[]
-  stockItems      StockItem[]
-  stockMovements  StockMovement[]
-  stockOffers     StockOffer[]
-  staff           Staff[]
-  consents        Consent[]
-  surveys         Survey[]
-  surveyResponses SurveyResponse[]
-  communication   CommunicationLog[]
-  recalls         Recall[]
-  reports         ReportSnapshot[]
-  demoRequests    DemoRequest[]
-  auditLogs       AuditLog[]
-  patientFiles    PatientFile[]
+  id                String             @id @default(cuid())
+  name              String
+  slug              String             @unique
+  plan              String             @default("Klinik")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  branches          Branch[]
+  users             User[]
+  patients          Patient[]
+  appointments      Appointment[]
+  treatmentPlans    TreatmentPlan[]
+  treatments        Treatment[]
+  payments          Payment[]
+  invoices          Invoice[]
+  stockItems        StockItem[]
+  stockMovements    StockMovement[]
+  stockOffers       StockOffer[]
+  staff             Staff[]
+  consents          Consent[]
+  surveys           Survey[]
+  surveyResponses   SurveyResponse[]
+  communication     CommunicationLog[]
+  recalls           Recall[]
+  reports           ReportSnapshot[]
+  demoRequests      DemoRequest[]
+  auditLogs         AuditLog[]
+  patientFiles      PatientFile[]
+  mobileSyncRecords MobileSyncRecord[]
 }
 
 model Branch {
@@ -878,6 +879,25 @@ model AuditLog {
   @@index([userId])
   @@index([module])
   @@index([organizationId, createdAt])
+}
+
+model MobileSyncRecord {
+  id             String       @id @default(cuid())
+  organizationId String
+  deviceId       String
+  operationId    String
+  entityType     String
+  action         String
+  clientId       String
+  serverEntityId String?
+  payloadHash    String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, deviceId, operationId])
+  @@index([organizationId, deviceId, entityType, clientId])
+  @@index([serverEntityId])
 }
 
 model Lead {

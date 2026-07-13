@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import packageInfo from "../../../../package.json";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function GET() {
       {
         status: "ok",
         service: "clinicnova",
-        version: "1.2.2",
+        version: packageInfo.version,
         timestamp: new Date().toISOString()
       },
       { headers: { "Cache-Control": "no-store" } }

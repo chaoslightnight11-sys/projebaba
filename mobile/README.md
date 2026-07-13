@@ -1,8 +1,8 @@
 # ClinicNova Android
 
-ClinicNova Android, API 24 ve üzeri cihazlarda çalışan imzalı bir WebView uygulamasıdır. Üretim paketi gerçek hasta verisini APK içindeki yerel demo alana yazmaz; ilk açılışta veya derleme sırasında tanımlanan HTTPS ClinicNova sunucusunu açar.
+ClinicNova Android, API 24 ve üzeri cihazlarda çalışan imzalı, yerel öncelikli bir WebView uygulamasıdır. Üretim paketi boş klinik verisiyle başlar; hasta, randevu ve tahsilat kayıtlarını bağlantı olmasa da cihazın uygulama alanında saklar.
 
-Demo modu yalnızca satış gösterimi ve otomatik test içindir. Demo hasta, randevu ve tahsilat kayıtları cihazdaki WebView depolamasında tutulur ve gerçek hasta verisiyle kullanılmamalıdır.
+HTTPS ClinicNova sunucusu bağlanıp klinik hesabıyla giriş yapıldığında bekleyen yerel işlemler sunucuya otomatik gönderilir. İşlem kimlikleri sunucuda kalıcı tutulduğu için bağlantı kesilip tekrar denendiğinde çift kayıt oluşmaz. Demo modu yalnızca otomatik test ve ayrı satış gösterimi içindir.
 
 ## Derleme
 
@@ -20,6 +20,6 @@ MOBILE_MODE=production MOBILE_SERVER_URL=https://app.example.com npm run android
 npm run android:verify
 ```
 
-Sunucu adresi verilmezse üretim APK'sı ilk açılışta kullanıcıdan HTTPS adresini ister. Demo paketi için `MOBILE_MODE=demo npm run android:build` kullanılır.
+Sunucu adresi verilmezse üretim APK'sı doğrudan yerel çalışma seçeneği sunar; adres daha sonra ayarlardan bağlanabilir. Demo paketi yalnızca test/gösterim için `MOBILE_MODE=demo npm run android:build` ile ayrı üretilir.
 
-Çıktı: `releases/ClinicNova-1.3.0.apk`
+Çıktı: `releases/ClinicNova-1.4.0.apk`

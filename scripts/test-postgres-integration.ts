@@ -12,6 +12,8 @@ import { verifyMfaForLogin } from "../src/lib/services/mfaService";
 import { createAppointment } from "../src/lib/services/appointmentService";
 import { createPayment } from "../src/lib/services/financeService";
 import { createStockItem, createStockMovement } from "../src/lib/services/stockService";
+import { syncMobileOperations } from "../src/lib/services/mobileSyncService";
+import { mobileSyncBatchSchema } from "../src/lib/validations/mobile-sync";
 
 const suffix = randomUUID().slice(0, 8);
 const organizationSlug = `deep-test-${suffix}`;
@@ -76,6 +78,19 @@ async function main() {
     } finally {
       await prisma.$executeRawUnsafe('ALTER TABLE "AuditLog" ENABLE TRIGGER "AuditLog_immutable_update"');
     }
+
+    const mobileSession = { kind: "staff" as const, userId: user.id, name: user.name, email: user.email, role: user.role, organizationId: organization.id, branchId: branch.id };
+    const mobileBatch = mobileSyncBatchSchema.parse({ deviceId: `android-${suffix}`, operations: [
+      { operationId: `patient-${suffix}`, entityType: "PATIENT", action: "CREATE", clientId: "local-patient-1", createdAt: new Date().toISOString(), payload: { name: "Yerel Hasta", phone: "+90 555 111 22 33", email: "yerel@example.test", tag: "ACTIVE" } },
+      { operationId: `appointment-${suffix}`, entityType: "APPOINTMENT", action: "CREATE", clientId: "local-appointment-1", createdAt: new Date().toISOString(), payload: { patientId: "local-patient-1", date: "2027-02-10", time: "10:30", duration: 30, treatment: "Kontrol", doctor: user.name, room: "Koltuk 1", status: "PLANNED" } },
+      { operationId: `payment-${suffix}`, entityType: "PAYMENT", action: "CREATE", clientId: "local-payment-1", createdAt: new Date().toISOString(), payload: { patientId: "local-patient-1", amount: 500, totalAmount: 1500, remainingAmount: 1000, method: "Nakit", description: "Yerel peşinat", isDeposit: true } }
+    ] });
+    assert.equal((await syncMobileOperations(mobileSession, mobileBatch)).filter((item) => item.status === "synced").length, 3);
+    assert.equal(await prisma.patient.count({ where: { organizationId: organization.id, phoneNormalized: "5551112233" } }), 1);
+    assert.equal(await prisma.appointment.count({ where: { organizationId: organization.id, treatmentType: "Kontrol" } }), 1);
+    assert.equal(await prisma.payment.count({ where: { organizationId: organization.id, description: "Yerel peşinat", isDeposit: true } }), 1);
+    assert.equal((await syncMobileOperations(mobileSession, mobileBatch)).filter((item) => item.status === "synced").length, 3);
+    assert.equal(await prisma.mobileSyncRecord.count({ where: { organizationId: organization.id, deviceId: `android-${suffix}` } }), 3, "aynı mobil paket tekrar gönderildiğinde çift kayıt oluşturmamalı");
 
     const mfaSecret = "JBSWY3DPEHPK3PXP";
     const recoveryCode = createRecoveryCodes(1)[0];

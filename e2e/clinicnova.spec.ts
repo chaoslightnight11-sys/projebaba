@@ -31,10 +31,10 @@ test("outdated signed Android clients receive the secure update notice", async (
   await page.goto("/login");
   const update = page.getByRole("link", { name: "İmzalı APK’yı güncelle" });
   await expect(update).toBeVisible();
-  await expect(update).toHaveAttribute("href", "https://download.example.test/ClinicNova-1.3.0.apk");
+  await expect(update).toHaveAttribute("href", "https://download.example.test/ClinicNova-1.4.0.apk");
   const manifest = await page.request.get("/api/mobile/version");
   expect(manifest.status()).toBe(200);
-  expect(await manifest.json()).toMatchObject({ currentVersion: "1.3.0", minimumVersion: "1.3.0", sha256: "a".repeat(64) });
+  expect(await manifest.json()).toMatchObject({ currentVersion: "1.4.0", minimumVersion: "1.4.0", sha256: "a".repeat(64) });
 });
 
 test("staff login never exposes validation or internal error details", async ({ page }) => {
@@ -64,7 +64,9 @@ test("demo can open without a live database", async ({ page }) => {
 test("sales workflows expose full calendar, treatment details, stock purchasing and deposits", async ({ page }) => {
   await page.goto("/demo-open");
   await page.goto("/dashboard/treatment-plans");
-  await page.locator("tbody a").first().click();
+  const planHref = await page.locator("tbody a").first().getAttribute("href");
+  expect(planHref).toMatch(/^\/dashboard\/treatment-plans\//);
+  await page.goto(planHref!);
   await expect(page).toHaveURL(/\/dashboard\/treatment-plans\/.+/);
   await expect(page.getByRole("link", { name: "Planlara dön" })).toBeVisible();
   await expect(page.getByText("Tahmini ücret", { exact: true })).toBeVisible();
@@ -124,9 +126,9 @@ test("operational writes preserve tenant and accounting integrity", async ({ pag
 
 test("patient portal scopes identity and revokes a deleted patient's session", async ({ page }, testInfo) => {
   await page.goto("/demo-open");
-  const suffix = testInfo.project.name === "android-chrome" ? "902" : "901";
+  const suffix = `${testInfo.project.name === "android-chrome" ? "902" : "901"}${testInfo.retry}`;
   const patient = {
-    phone: `+90 555 000 0${suffix}`,
+    phone: `+90 555 000 ${suffix}`,
     birthDate: "1990-01-10",
     wrongBirthDate: "1990-01-11",
     name: `Portal Test ${suffix}`
@@ -326,7 +328,7 @@ test("staff can sign in, use the dashboard and sign out", async ({ page }, testI
 
   const health = await page.request.get("/api/health");
   expect(health.status()).toBe(200);
-  expect(await health.json()).toMatchObject({ status: "ok", service: "clinicnova", version: "1.2.2" });
+  expect(await health.json()).toMatchObject({ status: "ok", service: "clinicnova", version: "1.4.0" });
 
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);

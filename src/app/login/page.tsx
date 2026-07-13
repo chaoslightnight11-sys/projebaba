@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 export default async function LoginPage(props: { searchParams: Promise<{ next?: string }> }) {
   const searchParams = await props.searchParams;
-  const nextPath = searchParams.next?.startsWith("/dashboard") ? searchParams.next : "/dashboard";
+  const nextPath = searchParams.next === "/mobile-connect" || searchParams.next?.startsWith("/dashboard") ? searchParams.next : "/dashboard";
   const demoMode = isDemoMode();
   return (
     <>

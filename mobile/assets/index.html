@@ -41,8 +41,8 @@
         </div>
         <div class="login-copy">
           <span id="loginEyebrow" class="eyebrow">GÜVENLİ KLİNİK ERİŞİMİ</span>
-          <h1 id="loginTitle">Kliniğinizi güvenle bağlayın.</h1>
-          <p id="loginDescription">Kliniğinizin HTTPS adresini girerek gerçek ClinicNova hesabınıza bağlanın.</p>
+          <h1 id="loginTitle">Kliniğiniz çevrimdışı da çalışır.</h1>
+          <p id="loginDescription">Kayıtları önce bu cihazda saklayın; sunucuyu bağladığınızda otomatik eşitleyin.</p>
         </div>
         <form id="loginForm" class="form-stack">
           <label id="serverUrlField">ClinicNova sunucu adresi<input id="serverUrl" name="serverUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://app.kliniginiz.com" required /></label>
@@ -50,10 +50,10 @@
             <label>E-posta<input id="loginEmail" type="email" autocomplete="email" /></label>
             <label>Şifre<input id="loginPassword" type="password" autocomplete="current-password" minlength="8" /></label>
           </div>
-          <button class="button button-primary button-large" type="submit"><span id="loginSubmitLabel">Güvenli sisteme bağlan</span> <svg><use href="#i-chevron"/></svg></button>
-          <button id="previewDemoButton" class="button button-secondary button-large" type="button" hidden>Demo olarak incele</button>
+          <button class="button button-primary button-large" type="submit"><span id="loginSubmitLabel">Yerel çalışmayı başlat</span> <svg><use href="#i-chevron"/></svg></button>
+          <button id="previewDemoButton" class="button button-secondary button-large" type="button" hidden>Yerel çalışmayı aç</button>
         </form>
-        <div class="secure-note"><svg><use href="#i-shield"/></svg><span id="loginSecureNote">Hasta verileri APK içinde tutulmaz; yalnızca yapılandırdığınız HTTPS sunucusuyla iletişim kurulur.</span></div>
+        <div class="secure-note"><svg><use href="#i-shield"/></svg><span id="loginSecureNote">Yerel kayıtlar uygulamanın özel alanında tutulur ve yalnızca seçtiğiniz HTTPS sunucusuna eşitlenir.</span></div>
       </div>
     </section>
 
@@ -118,11 +118,11 @@
           <div class="page-heading"><div><span class="eyebrow">CLINICNOVA</span><h1>Tüm modüller</h1><p class="muted">Klinik operasyon merkezi</p></div><button id="themeButton" class="icon-button" aria-label="Temayı değiştir"><svg><use href="#i-moon"/></svg></button></div>
           <div id="moduleGrid" class="module-grid"></div>
           <div class="settings-card">
-            <button data-action="connect"><span class="settings-icon"><svg><use href="#i-wifi"/></svg></span><span><strong>Canlı sisteme bağlan</strong><small>HTTPS sunucu adresinizi yapılandırın</small></span><svg><use href="#i-chevron"/></svg></button>
+            <button data-action="connect"><span class="settings-icon"><svg><use href="#i-wifi"/></svg></span><span><strong>Sunucuya bağla ve eşitle</strong><small>Bekleyen yerel kayıtları güvenli sunucuya gönderin</small></span><svg><use href="#i-chevron"/></svg></button>
             <button data-action="security"><span class="settings-icon"><svg><use href="#i-shield"/></svg></span><span><strong>Güvenlik ve veri</strong><small>Yerel saklama ve uygulama bilgisi</small></span><svg><use href="#i-chevron"/></svg></button>
             <button data-action="logout"><span class="settings-icon danger"><svg><use href="#i-logout"/></svg></span><span><strong>Çıkış yap</strong><small>Bu cihazdaki oturumu kapatın</small></span><svg><use href="#i-chevron"/></svg></button>
           </div>
-          <p class="version-label">ClinicNova Android · Sürüm 1.2.2</p>
+          <p id="versionLabel" class="version-label">ClinicNova Android</p>
         </section>
       </main>
 

@@ -7,6 +7,7 @@ import { paymentSchema } from "../src/lib/validations/finance";
 import { stockMovementSchema, stockOfferSchema } from "../src/lib/validations/stock";
 import { canAccess } from "../src/lib/rbac";
 import { Role } from "@prisma/client";
+import { mobileSyncBatchSchema } from "../src/lib/validations/mobile-sync";
 
 test("login validation normalizes e-mail addresses", () => {
   const result = loginSchema.parse({ email: "OWNER@CLINICNOVA.TEST", password: "password123" });
@@ -51,4 +52,11 @@ test("role permissions hide financial and stock data from reception", () => {
   assert.equal(canAccess(Role.RECEPTIONIST, "finance"), false);
   assert.equal(canAccess(Role.RECEPTIONIST, "stocks"), false);
   assert.equal(canAccess(Role.CLINIC_OWNER, "recalls"), true);
+});
+
+test("mobile sync batches are bounded and require stable operation identities", () => {
+  const operation = { operationId: "operation-123", entityType: "PATIENT", action: "CREATE", clientId: "local-1", createdAt: new Date().toISOString(), payload: { name: "Yerel Hasta" } };
+  assert.equal(mobileSyncBatchSchema.safeParse({ deviceId: "android-device-1", operations: [operation] }).success, true);
+  assert.equal(mobileSyncBatchSchema.safeParse({ deviceId: "short", operations: [operation] }).success, false);
+  assert.equal(mobileSyncBatchSchema.safeParse({ deviceId: "android-device-1", operations: [] }).success, false);
 });
