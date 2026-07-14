@@ -101,9 +101,24 @@
 
         <section id="view-appointments" class="view" data-view="appointments">
           <div class="page-heading"><div><span class="eyebrow">PLANLAMA</span><h1>Randevular</h1><p class="muted">Günlük klinik akışı</p></div><button class="button button-primary button-square" data-action="add-appointment" aria-label="Randevu oluştur"><svg><use href="#i-plus"/></svg></button></div>
-          <div id="dateStrip" class="date-strip"></div>
+          <div class="calendar-toolbar"><button class="icon-button" data-calendar-step="-1" aria-label="Önceki ay">‹</button><strong id="calendarMonthLabel"></strong><button class="icon-button" data-calendar-step="1" aria-label="Sonraki ay">›</button></div>
+          <div class="calendar-weekdays" aria-hidden="true"><span>Pzt</span><span>Sal</span><span>Çar</span><span>Per</span><span>Cum</span><span>Cmt</span><span>Paz</span></div>
+          <div id="dateStrip" class="month-calendar"></div>
           <div class="summary-strip"><span><strong id="appointmentTotal">0</strong> randevu</span><span><i class="status-dot status-planned"></i>Planlı</span><span><i class="status-dot status-arrived"></i>Geldi</span></div>
           <div id="appointmentList" class="appointment-list"></div>
+        </section>
+
+        <section id="view-treatment-plans" class="view" data-view="treatment-plans">
+          <div class="page-heading"><div><span class="eyebrow">TEDAVİ</span><h1>Tedavi planları</h1><p class="muted">Hasta, hekim, ücret ve süreç ayrıntıları</p></div></div>
+          <div id="treatmentPlanList" class="list-stack page-list"></div>
+        </section>
+
+        <section id="view-stocks" class="view" data-view="stocks">
+          <div class="page-heading"><div><span class="eyebrow">STOK YÖNETİMİ</span><h1>Stok</h1><p class="muted">Ürün, miktar, tedarik ve satın alma</p></div><button class="button button-primary button-square" data-action="add-stock-item" aria-label="Stok ürünü ekle"><svg><use href="#i-plus"/></svg></button></div>
+          <div id="stockSummary" class="finance-stats"></div>
+          <div class="stock-actions"><button class="button button-primary" data-action="add-stock-item">Yeni ürün ekle</button><button class="button button-secondary" data-action="stock-movement">Adet ekle / çıkar</button></div>
+          <div class="section-heading"><div><span class="eyebrow">MALZEMELER</span><h2>Stok listesi</h2></div></div>
+          <div id="stockList" class="list-stack"></div>
         </section>
 
         <section id="view-finance" class="view" data-view="finance">
@@ -130,7 +145,8 @@
         <button class="active" data-go="home"><svg><use href="#i-home"/></svg><span>Ana Sayfa</span></button>
         <button data-go="patients"><svg><use href="#i-users"/></svg><span>Hastalar</span></button>
         <button data-go="appointments"><svg><use href="#i-calendar"/></svg><span>Randevu</span></button>
-        <button data-go="finance"><svg><use href="#i-wallet"/></svg><span>Finans</span></button>
+        <button data-go="treatment-plans"><svg><use href="#i-tooth"/></svg><span>Tedaviler</span></button>
+        <button data-go="stocks"><svg><use href="#i-box"/></svg><span>Stok</span></button>
         <button data-go="more"><svg><use href="#i-grid"/></svg><span>Diğer</span></button>
       </nav>
     </div>

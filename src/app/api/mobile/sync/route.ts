@@ -14,6 +14,7 @@ export async function POST(request: Request) {
     if (batch.operations.some((item) => item.entityType === "PATIENT") && !canAccess(session.role, "patients")) return NextResponse.json({ error: "Hasta eşitleme yetkiniz yok." }, { status: 403 });
     if (batch.operations.some((item) => item.entityType === "APPOINTMENT") && !canAccess(session.role, "appointments")) return NextResponse.json({ error: "Randevu eşitleme yetkiniz yok." }, { status: 403 });
     if (batch.operations.some((item) => item.entityType === "PAYMENT") && !canAccess(session.role, "finance")) return NextResponse.json({ error: "Finans eşitleme yetkiniz yok." }, { status: 403 });
+    if (batch.operations.some((item) => item.entityType.startsWith("STOCK_")) && !canAccess(session.role, "stocks")) return NextResponse.json({ error: "Stok eşitleme yetkiniz yok." }, { status: 403 });
     const results = await syncMobileOperations(session, batch);
     const synced = results.filter((item) => item.status === "synced").length;
     await writeAuditLog({ userId: session.userId, action: "MOBILE_OFFLINE_SYNC", module: "mobile", organizationId: session.organizationId, branchId: session.branchId, metadata: { deviceId: batch.deviceId, received: batch.operations.length, synced } });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { AppointmentStatus, PaymentMethod, PaymentStatus, PaymentType, Prisma, Role } from "@prisma/client";
+import { AppointmentStatus, PaymentMethod, PaymentStatus, PaymentType, Prisma, Role, StockMovementType } from "@prisma/client";
 import { z } from "zod";
 import type { AuthSession } from "@/lib/auth";
 import { normalizePhone } from "@/lib/phone";
@@ -36,6 +36,23 @@ const paymentPayload = z.object({
   description: z.string().max(1000).optional(),
   detail: z.string().max(1000).optional(),
   isDeposit: z.boolean().optional()
+});
+
+const stockItemPayload = z.object({
+  name: z.string().trim().min(2).max(200), category: z.string().trim().min(2).max(120),
+  currentQuantity: z.coerce.number().int().min(0), minimumQuantity: z.coerce.number().int().min(0),
+  unit: z.string().trim().min(1).max(40), supplier: z.string().trim().max(200).optional(), purchasePrice: z.coerce.number().min(0).max(100_000_000)
+});
+
+const stockMovementPayload = z.object({
+  itemId: z.union([z.string(), z.number()]).transform(String), type: z.enum(["IN", "OUT", "ADJUSTMENT"]),
+  quantity: z.coerce.number().int().min(0), note: z.string().trim().max(500).optional()
+}).refine((value) => value.type === "ADJUSTMENT" || value.quantity > 0, { message: "Stok giriş ve çıkış miktarı sıfırdan büyük olmalıdır.", path: ["quantity"] });
+
+const stockOfferPayload = z.object({
+  itemId: z.union([z.string(), z.number()]).transform(String), seller: z.string().trim().min(2).max(200),
+  unitPrice: z.coerce.number().positive().max(100_000_000), shippingPrice: z.coerce.number().min(0).max(100_000_000),
+  productUrl: z.string().url().refine((url) => url.startsWith("https://"), "Yalnızca HTTPS ürün adresi kullanılabilir."), inStock: z.boolean().default(true)
 });
 
 type SyncResult = { operationId: string; status: "synced" | "failed"; serverEntityId?: string; error?: string };
@@ -111,6 +128,51 @@ async function applyOperation(tx: Prisma.TransactionClient, session: AuthSession
     if (candidates.some((item) => item.startsAt < endsAt && new Date(item.startsAt.getTime() + item.durationMinutes * 60_000) > startsAt)) throw new Error("Doktorun bu saat aralığında başka randevusu var.");
     const appointment = await tx.appointment.create({ data: { patientId, doctorId: doctor.id, startsAt, durationMinutes: payload.duration, room: payload.room || null, treatmentType: payload.treatment, status: payload.status as AppointmentStatus, notes: "Android yerel kaydından eşitlendi.", organizationId, branchId } });
     return appointment.id;
+  }
+
+  if (operation.entityType === "STOCK_ITEM") {
+    const existingId = await mappedEntityId(tx, organizationId, deviceId, "STOCK_ITEM", operation.clientId);
+    if (operation.action === "DELETE") {
+      if (existingId) await tx.stockItem.deleteMany({ where: { id: existingId, organizationId } });
+      return existingId;
+    }
+    const payload = stockItemPayload.parse(operation.payload);
+    if (existingId) {
+      await tx.stockItem.updateMany({ where: { id: existingId, organizationId }, data: { name: payload.name, category: payload.category, minimumQuantity: payload.minimumQuantity, unit: payload.unit, supplier: payload.supplier || null, purchasePrice: payload.purchasePrice } });
+      return existingId;
+    }
+    const item = await tx.stockItem.create({ data: { name: payload.name, category: payload.category, currentQuantity: payload.currentQuantity, minimumQuantity: payload.minimumQuantity, unit: payload.unit, supplier: payload.supplier || null, purchasePrice: payload.purchasePrice, organizationId, branchId } });
+    if (payload.currentQuantity > 0) await tx.stockMovement.create({ data: { itemId: item.id, type: StockMovementType.IN, quantity: payload.currentQuantity, note: "Android açılış stoku", organizationId, branchId } });
+    return item.id;
+  }
+
+  if (operation.entityType === "STOCK_MOVEMENT") {
+    const existingId = await mappedEntityId(tx, organizationId, deviceId, "STOCK_MOVEMENT", operation.clientId);
+    if (existingId) return existingId;
+    if (operation.action !== "CREATE") throw new Error("Stok hareketleri yalnızca eklenebilir.");
+    const payload = stockMovementPayload.parse(operation.payload);
+    const itemId = await mappedEntityId(tx, organizationId, deviceId, "STOCK_ITEM", payload.itemId);
+    if (!itemId) throw new Error("Önce bağlı stok ürünü eşitlenmelidir.");
+    const item = await tx.stockItem.findFirst({ where: { id: itemId, organizationId } });
+    if (!item) throw new Error("Stok ürünü bulunamadı.");
+    if (payload.type === "OUT" && payload.quantity > item.currentQuantity) throw new Error(`Stok yetersiz. Mevcut miktar: ${item.currentQuantity}.`);
+    const nextQuantity = payload.type === "IN" ? item.currentQuantity + payload.quantity : payload.type === "OUT" ? item.currentQuantity - payload.quantity : payload.quantity;
+    await tx.stockItem.update({ where: { id: item.id }, data: { currentQuantity: nextQuantity } });
+    const movement = await tx.stockMovement.create({ data: { itemId: item.id, type: payload.type as StockMovementType, quantity: payload.quantity, note: payload.note || null, organizationId, branchId: item.branchId } });
+    return movement.id;
+  }
+
+  if (operation.entityType === "STOCK_OFFER") {
+    const existingId = await mappedEntityId(tx, organizationId, deviceId, "STOCK_OFFER", operation.clientId);
+    if (existingId) return existingId;
+    if (operation.action !== "CREATE") throw new Error("Satın alma fiyatları yalnızca eklenebilir.");
+    const payload = stockOfferPayload.parse(operation.payload);
+    const itemId = await mappedEntityId(tx, organizationId, deviceId, "STOCK_ITEM", payload.itemId);
+    if (!itemId) throw new Error("Önce bağlı stok ürünü eşitlenmelidir.");
+    const item = await tx.stockItem.findFirst({ where: { id: itemId, organizationId }, select: { branchId: true } });
+    if (!item) throw new Error("Stok ürünü bulunamadı.");
+    const offer = await tx.stockOffer.create({ data: { itemId, seller: payload.seller, unitPrice: payload.unitPrice, shippingPrice: payload.shippingPrice, productUrl: payload.productUrl, inStock: payload.inStock, checkedAt: new Date(), organizationId, branchId: item.branchId } });
+    return offer.id;
   }
 
   const existingId = await mappedEntityId(tx, organizationId, deviceId, "PAYMENT", operation.clientId);

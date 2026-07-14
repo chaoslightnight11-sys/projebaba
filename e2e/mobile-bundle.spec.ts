@@ -13,8 +13,7 @@ test("single-file iPhone demo opens without network or extra files", async ({ pa
   await page.goto(iphoneDemoUrl);
   await expect(page.getByRole("heading", { name: /Günaydın/ })).toBeVisible();
   await expect(page.locator("#loginScreen")).toBeHidden();
-  await page.getByRole("button", { name: "Diğer", exact: true }).click();
-  await page.getByRole("button", { name: /^Stok/ }).click();
+  await page.locator(".bottom-nav").getByRole("button", { name: "Stok", exact: true }).click();
   await expect(page.getByText("Anestezi kartuşu", { exact: true })).toBeVisible();
   expect(requests).toEqual([]);
 });
@@ -92,6 +91,7 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByLabel("İşlem 2").fill("Kemik grefti");
   await page.getByLabel("Bedeli").nth(1).fill("5000");
   await page.getByLabel("Şimdi alınan").fill("1250");
+  await page.getByLabel("Bu tahsilat peşinattır").check();
   await page.getByRole("button", { name: "Ödemeyi kaydet" }).click();
   await expect(page.getByRole("heading", { name: "Tahsilat merkezi" })).toBeVisible();
   await expect(page.locator("#transactionList").getByText("Tuna Akın", { exact: true })).toBeVisible();
@@ -113,12 +113,49 @@ test("bundled Android interface works offline", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Bugünkü fırsatlar" })).toBeVisible();
 
   await page.getByRole("button", { name: "Kapat", exact: true }).click();
+
+  await page.locator(".bottom-nav").getByRole("button", { name: "Tedaviler", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tedavi planları" })).toBeVisible();
+  await page.locator("#treatmentPlanList").getByRole("button", { name: /Ayşe Yılmaz/ }).click();
+  await expect(page.getByRole("heading", { name: "Ayşe Yılmaz" })).toBeVisible();
+  await expect(page.getByText("Diş / bölge", { exact: true })).toBeVisible();
+  await expect(page.getByText("Dr. Emir Aydın", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
+
+  await page.locator(".bottom-nav").getByRole("button", { name: "Stok", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Stok", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Stok ürünü ekle" }).click();
+  await page.locator('#stockItemForm input[name="name"]').fill("Maske");
+  await page.locator('#stockItemForm input[name="category"]').fill("Sarf");
+  await page.locator('#stockItemForm input[name="amount"]').fill("10");
+  await page.locator('#stockItemForm input[name="minimum"]').fill("5");
+  await page.getByRole("button", { name: "Ürünü kaydet" }).click();
+  await expect(page.locator("#stockList").getByText("Maske", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Adet ekle / çıkar" }).click();
+  await page.locator('#stockMovementForm select[name="itemId"]').selectOption({ label: "Maske · 10 adet" });
+  await page.locator('#stockMovementForm select[name="type"]').selectOption("OUT");
+  await page.locator('#stockMovementForm input[name="quantity"]').fill("3");
+  await page.getByRole("button", { name: "Hareketi kaydet" }).click();
+  await expect(page.locator("#stockList").getByRole("button", { name: /Maske/ })).toContainText("7");
+  await page.locator("#stockList").getByRole("button", { name: /Maske/ }).click();
+  await page.getByRole("button", { name: "Satın alma fiyatı ekle" }).click();
+  await page.locator('#stockOfferForm input[name="seller"]').fill("Medikal Market");
+  await page.locator('#stockOfferForm input[name="unitPrice"]').fill("100");
+  await page.locator('#stockOfferForm input[name="shippingPrice"]').fill("10");
+  await page.locator('#stockOfferForm input[name="productUrl"]').fill("https://example.com/maske");
+  await page.getByRole("button", { name: "Fiyatı kaydet" }).click();
+  await expect(page.getByText("Medikal Market", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
+
+  await page.locator(".bottom-nav").getByRole("button", { name: "Randevu", exact: true }).click();
+  await expect(page.locator("#dateStrip .date-button")).toHaveCount(42);
+  await page.getByRole("button", { name: "Sonraki ay" }).click();
+  await expect(page.locator("#calendarMonthLabel")).not.toBeEmpty();
+
   await page.getByRole("button", { name: "Diğer", exact: true }).click();
   await expect(page.getByRole("button", { name: "Diğer", exact: true })).toHaveAttribute("aria-current", "page");
   const moduleCases: Array<[string, string, string | null]> = [
-    ["Tedavi planları", "Ayşe Yılmaz", "Ayşe Yılmaz tedavi planını sil"],
     ["Sağlık turizmi", "John Smith", "John Smith lead kaydını sil"],
-    ["Stok", "Anestezi kartuşu", "Anestezi kartuşu stok kaydını sil"],
     ["İletişim", "Demo taslak", "Emily Carter iletişim kaydını sil"],
     ["Raporlar", "Net akış", null],
     ["Dijital onam", "İmza bekliyor", "Emily Carter onam kaydını sil"]
@@ -139,12 +176,12 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: /^Çöp Kutusu/ }).click();
   await expect(page.getByRole("heading", { name: "Çöp Kutusu" })).toBeVisible();
   await expect(page.getByText("30 gün kaldı").first()).toBeVisible();
-  const trashedStock = page.locator(".trash-record").filter({ hasText: "Anestezi kartuşu" });
-  await trashedStock.getByRole("button", { name: "Geri yükle" }).click();
-  await expect(page.locator(".trash-record").filter({ hasText: "Anestezi kartuşu" })).toHaveCount(0);
+  const trashedLead = page.locator(".trash-record").filter({ hasText: "John Smith" });
+  await trashedLead.getByRole("button", { name: "Geri yükle" }).click();
+  await expect(page.locator(".trash-record").filter({ hasText: "John Smith" })).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: /^Stok/ }).click();
-  await expect(page.getByText("Anestezi kartuşu", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Sağlık turizmi/ }).click();
+  await expect(page.getByText("John Smith", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
