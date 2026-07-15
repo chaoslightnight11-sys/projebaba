@@ -58,6 +58,7 @@ npm run start:production
 - Trafik hazırlığı: `GET /api/ready`
 - Üretim kılavuzu: [`docs/PRODUCTION.md`](docs/PRODUCTION.md)
 - Android kılavuzu: [`mobile/README.md`](mobile/README.md)
+- Klinik kurulum kontrol listesi: [`docs/CLINIC-INSTALL.md`](docs/CLINIC-INSTALL.md)
 
 ## Android
 
