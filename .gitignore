@@ -11,6 +11,9 @@ playwright-report
 test-results
 mobile/build
 mobile/.cache
+desktop/build
+desktop/build-resources
+releases/desktop
 .android-signing
 releases/*.apk
 releases/*.idsig

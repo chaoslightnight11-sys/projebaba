@@ -8,12 +8,16 @@
   const storage = {
     get(key, fallback) {
       try {
-        const value = localStorage.getItem(key);
+        const value = window.ClinicNovaNative?.storage?.getItem(key) ?? localStorage.getItem(key);
         return value === null ? fallback : JSON.parse(value);
       } catch { return fallback; }
     },
     set(key, value) {
-      try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* WebView storage can be unavailable in private mode. */ }
+      try {
+        const serialized = JSON.stringify(value);
+        if (window.ClinicNovaNative?.storage) window.ClinicNovaNative.storage.setItem(key, serialized);
+        else localStorage.setItem(key, serialized);
+      } catch { /* Platform storage can be unavailable when the OS keychain is locked. */ }
     }
   };
 
@@ -695,7 +699,8 @@
       const serverUrl = normalizedServerUrl(value);
       storage.set("clinicnova.serverUrl", serverUrl);
       showToast("Sunucu hesabı girişi açılıyor…");
-      setTimeout(() => { window.location.href = `${serverUrl}/login?next=%2Fmobile-connect&mobile=android`; }, 350);
+      const platform = encodeURIComponent(mobileConfig.platform || "android");
+      setTimeout(() => { window.location.href = `${serverUrl}/login?next=%2Fmobile-connect&mobile=${platform}`; }, 350);
       return true;
     } catch {
       showToast("Geçerli bir HTTPS ClinicNova adresi girin.");
@@ -703,14 +708,53 @@
     }
   }
 
-  function syncPending() {
-    if (demoMode || syncing || !syncQueue.length || !navigator.onLine) return;
+  function syncPending(force = false) {
+    if (demoMode || syncing || !navigator.onLine) return;
     const serverUrl = storage.get("clinicnova.serverUrl", "");
     if (!serverUrl || !window.ClinicNovaNative?.sync) return;
+    const lastPullAt = Number(storage.get("clinicnova.lastPullAt", 0));
+    if (!force && !syncQueue.length && Date.now() - lastPullAt < 60_000) return;
     syncing = true;
     updateNetworkBadge();
     const operations = syncQueue.slice(0, 50);
     window.ClinicNovaNative.sync(serverUrl, JSON.stringify({ deviceId, operations }));
+  }
+
+  function applyServerSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") return;
+    const collections = {
+      PATIENT: Array.isArray(snapshot.patients) ? snapshot.patients : [],
+      APPOINTMENT: Array.isArray(snapshot.appointments) ? snapshot.appointments : [],
+      PAYMENT: Array.isArray(snapshot.transactions) ? snapshot.transactions : [],
+      TREATMENT_PLAN: Array.isArray(snapshot.treatmentPlans) ? snapshot.treatmentPlans : [],
+      STOCK_ITEM: Array.isArray(snapshot.stockItems) ? snapshot.stockItems : []
+    };
+    const serverIds = Object.fromEntries(Object.entries(collections).map(([type, items]) => [type, new Map(items.map((item) => [String(item.serverId), item.id]))]));
+    for (const [type, items] of Object.entries(collections)) {
+      for (const item of items) if (item.serverId) syncMap[`${type}:${item.id}`] = String(item.serverId);
+    }
+    const localIdForServer = (type, localId) => {
+      const mappedServerId = syncMap[`${type}:${localId}`];
+      return mappedServerId ? serverIds[type]?.get(String(mappedServerId)) ?? localId : localId;
+    };
+    const pendingIds = (type) => new Set(syncQueue.filter((item) => item.entityType === type).map((item) => String(item.clientId)));
+    const retainPending = (items, type) => items.filter((item) => pendingIds(type).has(String(item.id)));
+    const mapPatientReference = (item) => ({ ...item, patientId: localIdForServer("PATIENT", item.patientId) });
+
+    const pendingPatients = retainPending(state.patients, "PATIENT");
+    const pendingAppointments = retainPending(state.appointments, "APPOINTMENT").map(mapPatientReference);
+    const pendingPayments = retainPending(state.transactions, "PAYMENT").map(mapPatientReference);
+    const pendingPlans = retainPending(treatmentPlans, "TREATMENT_PLAN").map(mapPatientReference);
+    const pendingStocks = retainPending(stockItems, "STOCK_ITEM");
+
+    state.patients = [...pendingPatients, ...collections.PATIENT];
+    state.appointments = [...pendingAppointments, ...collections.APPOINTMENT];
+    state.transactions = [...pendingPayments, ...collections.PAYMENT];
+    treatmentPlans = [...pendingPlans, ...collections.TREATMENT_PLAN];
+    stockItems = [...pendingStocks, ...collections.STOCK_ITEM];
+    storage.set("clinicnova.lastPullAt", Date.now());
+    saveData();
+    renderAll();
   }
 
   window.ClinicNovaSyncResult = (status, responseText) => {
@@ -736,10 +780,13 @@
       if (operation && result.serverEntityId) syncMap[`${operation.entityType}:${operation.clientId}`] = result.serverEntityId;
     }
     syncQueue = syncQueue.filter((item) => !syncedIds.has(item.operationId));
+    applyServerSnapshot(response.snapshot);
     persistSyncState();
-    showToast(response.failed ? `${response.synced} kayıt eşitlendi, ${response.failed} kayıt bekliyor.` : `${response.synced} kayıt sunucuya eşitlendi.`);
+    if (response.failed) showToast(`${response.synced} kayıt eşitlendi, ${response.failed} kayıt bekliyor.`);
+    else if (response.synced) showToast(`${response.synced} kayıt sunucuya eşitlendi.`);
     if (syncQueue.length && response.synced > 0) setTimeout(syncPending, 300);
   };
+  window.ClinicNovaNative?.onSyncResult?.(window.ClinicNovaSyncResult);
 
   function configureEntryMode() {
     if (demoMode) {
@@ -773,7 +820,7 @@
   }
 
   $("#todayLabel").textContent = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" }).format(today);
-  $("#versionLabel").textContent = `ClinicNova Android · Sürüm ${mobileConfig.appVersion || "yerel"}`;
+  $("#versionLabel").textContent = `ClinicNova ${mobileConfig.platformLabel || "Android"} · Sürüm ${mobileConfig.appVersion || "yerel"}`;
   $("#loginForm").addEventListener("submit", (event) => {
     event.preventDefault();
     if (!demoMode) {
@@ -1138,6 +1185,6 @@
     storage.set("clinicnova.previewSession", { createdAt: Date.now(), source: "ios-file-demo" });
     showApp();
   } else if ((demoMode && storage.get("clinicnova.session", null)) || storage.get("clinicnova.localSession", null) || storage.get("clinicnova.previewSession", null)) showApp(); else showLogin();
-  if (new URLSearchParams(window.location.search).has("sync")) setTimeout(syncPending, 500);
+  if (new URLSearchParams(window.location.search).has("sync")) setTimeout(() => syncPending(true), 500);
   else setTimeout(syncPending, 1500);
 })();

@@ -1,0 +1,31 @@
+appId: app.clinicnova.desktop
+productName: ClinicNova
+asar: true
+directories:
+  output: releases/desktop
+  buildResources: desktop/build-resources
+files:
+  - desktop/main.cjs
+  - desktop/preload.cjs
+extraResources:
+  - from: desktop/build
+    to: mobile
+mac:
+  category: public.app-category.medical
+  icon: desktop/build-resources/icon.png
+  target:
+    - target: dmg
+      arch: [universal]
+  artifactName: ClinicNova-${version}-macOS-${arch}.${ext}
+win:
+  icon: desktop/build-resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ClinicNova-${version}-Windows-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

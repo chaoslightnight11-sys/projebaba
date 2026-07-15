@@ -58,5 +58,5 @@ test("mobile sync batches are bounded and require stable operation identities", 
   const operation = { operationId: "operation-123", entityType: "PATIENT", action: "CREATE", clientId: "local-1", createdAt: new Date().toISOString(), payload: { name: "Yerel Hasta" } };
   assert.equal(mobileSyncBatchSchema.safeParse({ deviceId: "android-device-1", operations: [operation] }).success, true);
   assert.equal(mobileSyncBatchSchema.safeParse({ deviceId: "short", operations: [operation] }).success, false);
-  assert.equal(mobileSyncBatchSchema.safeParse({ deviceId: "android-device-1", operations: [] }).success, false);
+  assert.equal(mobileSyncBatchSchema.safeParse({ deviceId: "android-device-1", operations: [] }).success, true);
 });

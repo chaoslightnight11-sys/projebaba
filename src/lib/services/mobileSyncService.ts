@@ -5,6 +5,7 @@ import type { AuthSession } from "@/lib/auth";
 import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { getWritableBranchId } from "@/lib/services/tenantService";
+import { canAccess } from "@/lib/rbac";
 import type { MobileSyncBatch, MobileSyncOperation } from "@/lib/validations/mobile-sync";
 
 const patientPayload = z.object({
@@ -255,4 +256,92 @@ export async function syncMobileOperations(session: AuthSession, batch: MobileSy
     }
   }
   return results;
+}
+
+function localSnapshotId(entityType: string, id: string) {
+  const value = BigInt(`0x${createHash("sha256").update(`${entityType}:${id}`).digest("hex").slice(0, 14)}`);
+  return Number(value % 900_000_000_000n) + 1;
+}
+
+function istanbulParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return { date: `${part("year")}-${part("month")}-${part("day")}`, time: `${part("hour")}:${part("minute")}` };
+}
+
+export async function getMobileSnapshot(session: AuthSession, deviceId: string) {
+  const organizationId = session.organizationId;
+  const branch = session.branchId ? { branchId: session.branchId } : {};
+  const includePatients = canAccess(session.role, "patients");
+  const [patients, appointments, payments, plans, stocks] = await Promise.all([
+    includePatients ? prisma.patient.findMany({
+      where: { organizationId, deletedAt: null, ...branch }, orderBy: { updatedAt: "desc" }, take: 2000,
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true, tag: true, notes: true, updatedAt: true }
+    }) : [],
+    canAccess(session.role, "appointments") ? prisma.appointment.findMany({
+      where: { organizationId, ...branch }, orderBy: { updatedAt: "desc" }, take: 2000,
+      include: { patient: { select: { id: true } }, doctor: { select: { name: true } } }
+    }) : [],
+    canAccess(session.role, "finance") ? prisma.payment.findMany({
+      where: { organizationId, ...branch }, orderBy: { updatedAt: "desc" }, take: 2000,
+      include: { patient: { select: { id: true, firstName: true, lastName: true } } }
+    }) : [],
+    canAccess(session.role, "treatments") ? prisma.treatmentPlan.findMany({
+      where: { organizationId, ...branch }, orderBy: { updatedAt: "desc" }, take: 2000,
+      include: { patient: { select: { id: true, firstName: true, lastName: true } }, doctor: { select: { name: true } }, branch: { select: { name: true } } }
+    }) : [],
+    canAccess(session.role, "stocks") ? prisma.stockItem.findMany({
+      where: { organizationId, ...branch }, orderBy: { updatedAt: "desc" }, take: 2000,
+      include: { offers: { orderBy: { checkedAt: "desc" }, take: 10 } }
+    }) : []
+  ]);
+  const snapshotMappings = [
+    ...patients.map((item) => ["PATIENT", item.id]),
+    ...appointments.map((item) => ["APPOINTMENT", item.id]),
+    ...payments.map((item) => ["PAYMENT", item.id]),
+    ...plans.map((item) => ["TREATMENT_PLAN", item.id]),
+    ...stocks.map((item) => ["STOCK_ITEM", item.id])
+  ].map(([entityType, serverEntityId]) => {
+    const operationId = `snapshot:${entityType}:${serverEntityId}`;
+    return {
+      organizationId, deviceId, operationId, entityType, action: "SNAPSHOT",
+      clientId: String(localSnapshotId(entityType, serverEntityId)), serverEntityId,
+      payloadHash: createHash("sha256").update(operationId).digest("hex")
+    };
+  });
+  if (snapshotMappings.length) await prisma.mobileSyncRecord.createMany({ data: snapshotMappings, skipDuplicates: true });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    patients: patients.map((patient, index) => ({
+      id: localSnapshotId("PATIENT", patient.id), serverId: patient.id, name: `${patient.firstName} ${patient.lastName}`.trim(), phone: patient.phone,
+      email: patient.email ?? "", tag: patient.tag, lastVisit: "Sunucuyla eşitlendi", treatment: "", note: patient.notes ?? "", color: index % 5
+    })),
+    appointments: appointments.map((appointment) => {
+      const time = istanbulParts(appointment.startsAt);
+      return { id: localSnapshotId("APPOINTMENT", appointment.id), serverId: appointment.id, patientId: localSnapshotId("PATIENT", appointment.patient.id),
+        date: time.date, time: time.time, duration: appointment.durationMinutes, treatment: appointment.treatmentType, doctor: appointment.doctor.name,
+        room: appointment.room ?? "", status: appointment.status };
+    }),
+    transactions: payments.map((payment) => ({
+      id: localSnapshotId("PAYMENT", payment.id), serverId: payment.id, patientId: payment.patientId ? localSnapshotId("PATIENT", payment.patientId) : null,
+      name: payment.patient ? `${payment.patient.firstName} ${payment.patient.lastName}`.trim() : payment.description || "Finans hareketi",
+      detail: `${payment.description || "Tahsilat"} · ${payment.method}`, amount: Number(payment.amount), totalAmount: Number(payment.listAmount ?? payment.amount),
+      remainingAmount: Math.max(0, Number(payment.listAmount ?? payment.amount) - Number(payment.amount)), type: payment.type.toLowerCase(), status: payment.status,
+      isDeposit: payment.isDeposit, date: istanbulParts(payment.paidAt).date
+    })),
+    treatmentPlans: plans.map((plan) => ({
+      id: localSnapshotId("TREATMENT_PLAN", plan.id), serverId: plan.id, patientId: localSnapshotId("PATIENT", plan.patientId),
+      patient: `${plan.patient.firstName} ${plan.patient.lastName}`.trim(), treatment: plan.treatmentType, tooth: plan.toothNumber ?? "", doctor: plan.doctor.name,
+      branch: plan.branch.name, plannedAt: istanbulParts(plan.plannedAt).date, date: istanbulParts(plan.plannedAt).date,
+      total: Number(plan.estimatedFee), paid: 0, status: plan.status, statusCode: plan.status, note: plan.description ?? ""
+    })),
+    stockItems: stocks.map((item) => ({
+      id: localSnapshotId("STOCK_ITEM", item.id), serverId: item.id, name: item.name, category: item.category, amount: item.currentQuantity,
+      minimum: item.minimumQuantity, unit: item.unit, supplier: item.supplier ?? "", purchasePrice: Number(item.purchasePrice), movements: [],
+      offers: item.offers.map((offer) => ({ seller: offer.seller, unitPrice: Number(offer.unitPrice), shippingPrice: Number(offer.shippingPrice), productUrl: offer.productUrl, inStock: offer.inStock }))
+    }))
+  };
 }

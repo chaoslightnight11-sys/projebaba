@@ -11,7 +11,7 @@ export const mobileSyncOperationSchema = z.object({
 
 export const mobileSyncBatchSchema = z.object({
   deviceId: z.string().min(8).max(128),
-  operations: z.array(mobileSyncOperationSchema).min(1).max(50)
+  operations: z.array(mobileSyncOperationSchema).max(50)
 });
 
 export type MobileSyncOperation = z.infer<typeof mobileSyncOperationSchema>;

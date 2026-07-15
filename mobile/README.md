@@ -22,4 +22,4 @@ npm run android:verify
 
 Sunucu adresi verilmezse üretim APK'sı doğrudan yerel çalışma seçeneği sunar; adres daha sonra ayarlardan bağlanabilir. Demo paketi yalnızca test/gösterim için `MOBILE_MODE=demo npm run android:build` ile ayrı üretilir.
 
-Çıktı: `releases/ClinicNova-1.4.0.apk`
+Çıktı: `releases/ClinicNova-1.6.0.apk`
