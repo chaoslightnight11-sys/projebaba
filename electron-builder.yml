@@ -1,24 +1,21 @@
 appId: app.clinicnova.desktop
 productName: ClinicNova
+electronVersion: 43.1.1
 asar: true
 directories:
-  output: releases/desktop
-  buildResources: desktop/build-resources
+  output: ../../releases/desktop
+  buildResources: ../build-resources
 files:
-  - desktop/main.cjs
-  - desktop/preload.cjs
-extraResources:
-  - from: desktop/build
-    to: mobile
+  - "**/*"
 mac:
   category: public.app-category.medical
-  icon: desktop/build-resources/icon.png
+  icon: ../build-resources/icon.png
   target:
     - target: dmg
       arch: [universal]
   artifactName: ClinicNova-${version}-macOS-${arch}.${ext}
 win:
-  icon: desktop/build-resources/icon.png
+  icon: ../build-resources/icon.png
   target:
     - target: nsis
       arch: [x64]

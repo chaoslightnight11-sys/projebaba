@@ -126,7 +126,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   storePath = path.join(app.getPath("userData"), "clinicnova-local-store.json");
   try { encryptedStore = JSON.parse(fs.readFileSync(storePath, "utf8")); } catch { encryptedStore = {}; }
-  const assets = app.isPackaged ? path.join(process.resourcesPath, "mobile") : path.join(__dirname, "build");
+  const assets = app.isPackaged ? path.join(__dirname, "mobile") : path.join(__dirname, "build");
   protocol.handle("clinicnova", (request) => {
     const url = new URL(request.url);
     const asset = decodeURIComponent(url.pathname.replace(/^\//, "") || "index.html");
