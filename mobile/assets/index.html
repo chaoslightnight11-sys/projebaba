@@ -46,12 +46,18 @@
           <p id="loginDescription">Kayıtları önce bu cihazda saklayın; sunucuyu bağladığınızda otomatik eşitleyin.</p>
         </div>
         <form id="loginForm" class="form-stack">
-          <label id="serverUrlField">ClinicNova sunucu adresi<input id="serverUrl" name="serverUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://app.kliniginiz.com" required /></label>
+          <label id="serverUrlField">ClinicNova sunucu adresi<input id="serverUrl" name="serverUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://app.kliniginiz.com" /></label>
+          <div id="localSetupFields" class="form-stack" hidden>
+            <label>Klinik adı<input id="localClinicName" autocomplete="organization" maxlength="120" /></label>
+            <label>Yönetici adı<input id="localAdminName" autocomplete="name" maxlength="120" /></label>
+          </div>
           <div id="demoLoginFields" class="form-stack" hidden>
             <label>E-posta<input id="loginEmail" type="email" autocomplete="email" /></label>
-            <label>Şifre<input id="loginPassword" type="password" autocomplete="current-password" minlength="8" /></label>
+            <label>Parola<input id="loginPassword" type="password" autocomplete="current-password" minlength="10" /></label>
           </div>
           <button class="button button-primary button-large" type="submit"><span id="loginSubmitLabel">Yerel çalışmayı başlat</span> <svg><use href="#i-chevron"/></svg></button>
+          <button id="serverLoginButton" class="button button-secondary button-large" type="button" hidden>İnternetli kullanım / sunucuya bağlan</button>
+          <button id="recoveryButton" class="text-button" type="button" hidden>Parolamı kurtarma koduyla sıfırla</button>
           <button id="previewDemoButton" class="button button-secondary button-large" type="button" hidden>Yerel çalışmayı aç</button>
         </form>
         <div class="secure-note"><svg><use href="#i-shield"/></svg><span id="loginSecureNote">Yerel kayıtlar uygulamanın özel alanında tutulur ve yalnızca seçtiğiniz HTTPS sunucusuna eşitlenir.</span></div>
@@ -73,8 +79,8 @@
       <main class="main-content">
         <section id="view-home" class="view active" data-view="home">
           <div class="welcome-row">
-            <div><p id="todayLabel" class="muted"></p><h1>Günaydın, Derya 👋</h1></div>
-            <button class="avatar" type="button" data-action="profile" aria-label="Profil">DN</button>
+            <div><p id="todayLabel" class="muted"></p><h1 id="welcomeTitle">Günaydın 👋</h1></div>
+            <button id="profileAvatar" class="avatar" type="button" data-action="profile" aria-label="Profil">CN</button>
           </div>
           <button id="alertBanner" class="alert-banner" type="button" data-action="opportunities" aria-label="Gelir fırsatları hazır: 3 sıcak lead ve 2 geciken tahsilat">
             <div class="alert-icon">↗</div>

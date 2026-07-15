@@ -129,6 +129,8 @@
   let syncQueue = storage.get("clinicnova.syncQueue", []);
   let syncMap = storage.get("clinicnova.syncMap", {});
   let syncing = false;
+  let authenticatedThisRun = false;
+  const LOCAL_AUTH_ITERATIONS = 210000;
 
   function localDate(date) {
     const year = date.getFullYear();
@@ -144,6 +146,44 @@
   }
   function initials(name) {
     return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toLocaleUpperCase("tr-TR")).join("");
+  }
+  function bytesToBase64(bytes) {
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+  function randomSecret(size = 16) {
+    const bytes = crypto.getRandomValues(new Uint8Array(size));
+    return bytesToBase64(bytes);
+  }
+  async function deriveLocalSecret(secret, salt, iterations = LOCAL_AUTH_ITERATIONS) {
+    if (!crypto.subtle && typeof window.ClinicNovaNative?.hashSecret === "function") {
+      const result = window.ClinicNovaNative.hashSecret(secret, salt, iterations);
+      if (result) return result;
+    }
+    if (!crypto.subtle) throw new Error("Bu cihaz güvenli yerel parola doğrulamayı desteklemiyor.");
+    const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: Uint8Array.from(atob(salt), (char) => char.charCodeAt(0)), iterations }, material, 256);
+    return bytesToBase64(new Uint8Array(bits));
+  }
+  function secureEqual(left, right) {
+    if (typeof left !== "string" || typeof right !== "string" || left.length !== right.length) return false;
+    let difference = 0;
+    for (let index = 0; index < left.length; index += 1) difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+    return difference === 0;
+  }
+  function recoveryCode() {
+    const bytes = crypto.getRandomValues(new Uint8Array(15));
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase().match(/.{1,5}/g).join("-");
+  }
+  function localAccount() {
+    return storage.get("clinicnova.localAccount", null);
+  }
+  function applyLocalIdentity(account = localAccount()) {
+    if (!account) return;
+    $("#branchLabel").textContent = account.clinicName;
+    $("#welcomeTitle").textContent = `Günaydın, ${account.adminName.split(/\s+/)[0]} 👋`;
+    $("#profileAvatar").textContent = initials(account.adminName) || "CN";
   }
   function patientById(id) {
     return state.patients.find((patient) => patient.id === Number(id));
@@ -587,9 +627,9 @@
   }
 
   function openProfile() {
-    const session = storage.get("clinicnova.session", {});
-    openModal("PROFİL", "Derya Nova", `<div class="modal-grid">
-      <p class="modal-note"><strong>Klinik sahibi</strong><br/>${escapeHtml(session.email || "owner@clinicnova.test")}<br/>Nişantaşı Klinik</p>
+    const account = localAccount() || storage.get("clinicnova.session", {}) || {};
+    openModal("PROFİL", account.adminName || "ClinicNova Yöneticisi", `<div class="modal-grid">
+      <p class="modal-note"><strong>Yerel yönetici</strong><br/>${escapeHtml(account.email || "E-posta belirtilmedi")}<br/>${escapeHtml(account.clinicName || "ClinicNova")}</p>
       <div class="finance-stats"><article class="finance-stat"><span>Aktif hasta</span><strong>${state.patients.length}</strong><small>Cihazdaki kayıtlar</small></article><article class="finance-stat"><span>Bugünkü randevu</span><strong>${state.appointments.filter((item) => item.date === todayIso).length}</strong><small>Günlük plan</small></article></div>
       <button class="button button-secondary" data-go="more">Ayarları aç</button>
     </div>`);
@@ -669,20 +709,18 @@
   }
 
   function showApp() {
+    authenticatedThisRun = true;
     $("#loginScreen").hidden = true;
     $("#appShell").hidden = false;
+    applyLocalIdentity();
     renderAll();
     navigate(state.activeView);
   }
   function showLogin() {
+    authenticatedThisRun = false;
     $("#appShell").hidden = true;
     $("#loginScreen").hidden = false;
-  }
-
-  function openLocalWorkspace() {
-    storage.set("clinicnova.localSession", { createdAt: Date.now() });
-    showApp();
-    showToast("Yerel çalışma açıldı. Kayıtlar bu cihazda saklanacak.");
+    if (!demoMode) { $("#loginPassword").value = ""; configureEntryMode(); }
   }
 
   function normalizedServerUrl(value) {
@@ -791,6 +829,9 @@
   function configureEntryMode() {
     if (demoMode) {
       $("#previewDemoButton").hidden = true;
+      $("#serverLoginButton").hidden = true;
+      $("#recoveryButton").hidden = true;
+      $("#localSetupFields").hidden = true;
       $("#serverUrlField").hidden = true;
       $("#serverUrl").required = false;
       $("#demoLoginFields").hidden = false;
@@ -798,6 +839,7 @@
       $("#loginPassword").required = true;
       $("#loginEmail").value = "owner@clinicnova.test";
       $("#loginPassword").value = "password123";
+      $("#loginPassword").minLength = 8;
       $("#loginTitle").textContent = "Kliniğiniz cebinizde.";
       $("#loginDescription").textContent = "Bugünün operasyonunu, hastalarınızı ve tahsilat akışını çevrimdışı demo verileriyle deneyin.";
       $("#loginSubmitLabel").textContent = "Demo girişi";
@@ -805,27 +847,77 @@
       return;
     }
 
-    $("#serverUrlField").hidden = false;
+    const account = localAccount();
+    const creating = !account;
+    $("#serverUrlField").hidden = true;
     $("#previewDemoButton").hidden = true;
+    $("#serverLoginButton").hidden = false;
+    $("#recoveryButton").hidden = creating;
+    $("#localSetupFields").hidden = !creating;
     $("#serverUrl").required = false;
-    $("#demoLoginFields").hidden = true;
-    $("#loginEmail").required = false;
-    $("#loginPassword").required = false;
+    $("#demoLoginFields").hidden = false;
+    $("#loginEmail").required = true;
+    $("#loginPassword").required = true;
+    $("#loginPassword").minLength = 10;
+    $("#loginPassword").autocomplete = creating ? "new-password" : "current-password";
+    $("#localClinicName").required = creating;
+    $("#localAdminName").required = creating;
     const configuredUrl = mobileConfig.serverUrl || storage.get("clinicnova.serverUrl", "");
     $("#serverUrl").value = configuredUrl;
-    $("#loginTitle").textContent = "Kliniğiniz çevrimdışı da çalışır.";
-    $("#loginDescription").textContent = "Kayıtları önce bu cihazda saklayın; sunucuyu bağladığınızda otomatik eşitleyin.";
-    $("#loginSubmitLabel").textContent = configuredUrl ? "Sunucuya giriş yap ve eşitle" : "Yerel çalışmayı başlat";
-    $("#loginSecureNote").textContent = "Yerel kayıtlar uygulamanın özel alanında tutulur ve yalnızca seçtiğiniz HTTPS sunucusuna eşitlenir.";
+    $("#loginEmail").value = account?.email || "";
+    $("#loginTitle").textContent = creating ? "Yerel yönetici hesabını oluşturun." : `${account.clinicName} hesabına giriş`;
+    $("#loginDescription").textContent = creating ? "Bu hesap internet olmasa da cihazdaki klinik kayıtlarını korur." : "İnternet olmadan çalışabilir; bağlantı geldiğinde sunucuyla eşitlenir.";
+    $("#loginSubmitLabel").textContent = creating ? "Hesabı oluştur ve başla" : "Çevrimdışı giriş yap";
+    $("#loginSecureNote").textContent = "Parolanın kendisi saklanmaz. Güvenli özeti cihazda tutulur; Windows ve Mac'te yerel kasa ayrıca işletim sistemiyle şifrelenir.";
   }
 
   $("#todayLabel").textContent = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" }).format(today);
   $("#versionLabel").textContent = `ClinicNova ${mobileConfig.platformLabel || "Android"} · Sürüm ${mobileConfig.appVersion || "yerel"}`;
-  $("#loginForm").addEventListener("submit", (event) => {
+  $("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!demoMode) {
-      const serverUrl = $("#serverUrl").value.trim();
-      if (serverUrl) connectToServer(serverUrl); else openLocalWorkspace();
+      const submit = event.submitter;
+      if (submit) submit.disabled = true;
+      try {
+        const email = $("#loginEmail").value.trim().toLocaleLowerCase("tr-TR");
+        const password = $("#loginPassword").value;
+        let account = localAccount();
+        if (!account) {
+          const clinicName = $("#localClinicName").value.trim();
+          const adminName = $("#localAdminName").value.trim();
+          if (clinicName.length < 2 || adminName.length < 2 || !email.includes("@") || password.length < 10) return showToast("Klinik, yönetici, e-posta ve en az 10 karakterli parolayı kontrol edin.");
+          const passwordSalt = randomSecret();
+          const recoverySalt = randomSecret();
+          const code = recoveryCode();
+          account = {
+            clinicName, adminName, email, iterations: LOCAL_AUTH_ITERATIONS, passwordSalt,
+            passwordHash: await deriveLocalSecret(password, passwordSalt), recoverySalt,
+            recoveryHash: await deriveLocalSecret(code.replaceAll("-", ""), recoverySalt), failures: 0, lockedUntil: 0, createdAt: Date.now()
+          };
+          storage.set("clinicnova.localAccount", account);
+          showApp();
+          openModal("HESAP KURTARMA", "Kurtarma kodunuzu kaydedin", `<div class="modal-grid"><p class="modal-note">Bu kod yalnızca şimdi gösterilir. Parolanızı unutursanız çevrimdışı hesabı bununla kurtarabilirsiniz.</p><p class="modal-note"><strong style="font-size:1.1rem;letter-spacing:.08em">${escapeHtml(code)}</strong></p><p class="modal-note">Kodu hasta bilgisinden ayrı ve güvenli bir yerde saklayın.</p><button class="button button-primary" data-close-modal>Anladım, kaydettim</button></div>`);
+          showToast("Yerel yönetici hesabı oluşturuldu.");
+          return;
+        }
+        if (Number(account.lockedUntil || 0) > Date.now()) return showToast(`Çok fazla yanlış deneme. ${Math.ceil((account.lockedUntil - Date.now()) / 60000)} dakika sonra tekrar deneyin.`);
+        const candidate = await deriveLocalSecret(password, account.passwordSalt, account.iterations);
+        if (email !== account.email || !secureEqual(candidate, account.passwordHash)) {
+          account.failures = Number(account.failures || 0) + 1;
+          if (account.failures >= 5) { account.lockedUntil = Date.now() + 5 * 60_000; account.failures = 0; }
+          storage.set("clinicnova.localAccount", account);
+          return showToast("E-posta veya parola yanlış.");
+        }
+        account.failures = 0; account.lockedUntil = 0;
+        storage.set("clinicnova.localAccount", account);
+        showApp();
+        showToast(navigator.onLine ? "Giriş başarılı. Sunucu bağlantısı varsa eşitleme başlatıldı." : "Çevrimdışı giriş başarılı.");
+        setTimeout(() => syncPending(true), 200);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Yerel giriş tamamlanamadı.");
+      } finally {
+        if (submit) submit.disabled = false;
+      }
       return;
     }
     const email = $("#loginEmail").value.trim();
@@ -835,7 +927,14 @@
     showApp();
     showToast("Hoş geldiniz, Derya.");
   });
-  $("#previewDemoButton").addEventListener("click", openLocalWorkspace);
+  $("#serverLoginButton").addEventListener("click", () => {
+    const current = storage.get("clinicnova.serverUrl", "") || mobileConfig.serverUrl || "";
+    const value = window.prompt("HTTPS ClinicNova sunucu adresi", current || "https://");
+    if (value) connectToServer(value);
+  });
+  $("#recoveryButton").addEventListener("click", () => {
+    openModal("HESAP KURTARMA", "Yerel parolayı sıfırla", `<form id="recoveryForm" class="modal-grid"><label class="field">Kurtarma kodu<input name="code" autocomplete="off" required /></label><label class="field">Yeni parola<input name="password" type="password" minlength="10" autocomplete="new-password" required /></label><div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button class="button button-primary" type="submit">Parolayı yenile</button></div></form>`);
+  });
 
   document.addEventListener("click", (event) => {
     const target = event.target.closest("button, [data-go], [data-action]");
@@ -1017,7 +1116,7 @@
     if (action === "transaction-filter") return openTransactionFilter();
     if (action === "connect") return openConnection();
     if (action === "security") return openSecurity();
-    if (action === "logout") { storage.set("clinicnova.session", null); storage.set("clinicnova.localSession", null); storage.set("clinicnova.previewSession", null); closeModal(); showLogin(); showToast("Oturum kapatıldı."); return; }
+    if (action === "logout") { storage.set("clinicnova.session", null); storage.set("clinicnova.previewSession", null); closeModal(); showLogin(); showToast("Oturum kapatıldı."); return; }
   });
 
   $("#patientSearch").addEventListener("input", (event) => { state.patientQuery = event.target.value; renderPatients(); });
@@ -1061,7 +1160,31 @@
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
 
-  document.addEventListener("submit", (event) => {
+  document.addEventListener("submit", async (event) => {
+    if (event.target.id === "recoveryForm") {
+      event.preventDefault();
+      const account = localAccount();
+      const form = new FormData(event.target);
+      const code = String(form.get("code") || "").replace(/[^A-Fa-f0-9]/g, "").toUpperCase();
+      const password = String(form.get("password") || "");
+      if (!account || code.length !== 30 || password.length < 10) return showToast("Kurtarma kodunu ve en az 10 karakterli yeni parolayı kontrol edin.");
+      try {
+        const candidate = await deriveLocalSecret(code, account.recoverySalt, account.iterations);
+        if (!secureEqual(candidate, account.recoveryHash)) return showToast("Kurtarma kodu geçersiz.");
+        const nextCode = recoveryCode();
+        account.passwordSalt = randomSecret();
+        account.passwordHash = await deriveLocalSecret(password, account.passwordSalt, account.iterations);
+        account.recoverySalt = randomSecret();
+        account.recoveryHash = await deriveLocalSecret(nextCode.replaceAll("-", ""), account.recoverySalt, account.iterations);
+        account.failures = 0; account.lockedUntil = 0;
+        storage.set("clinicnova.localAccount", account);
+        openModal("HESAP KURTARMA", "Parola yenilendi", `<div class="modal-grid"><p class="modal-note">Eski kurtarma kodu iptal edildi. Yeni kodunuzu güvenli bir yere kaydedin:</p><p class="modal-note"><strong style="font-size:1.1rem;letter-spacing:.08em">${escapeHtml(nextCode)}</strong></p><button class="button button-primary" data-close-modal>Kaydettim</button></div>`);
+        showToast("Yerel parola yenilendi.");
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Parola yenilenemedi.");
+      }
+      return;
+    }
     if (event.target.id === "patientForm") {
       event.preventDefault();
       const form = new FormData(event.target);
@@ -1184,7 +1307,15 @@
   if (demoMode && mobileConfig.autoOpenDemo) {
     storage.set("clinicnova.previewSession", { createdAt: Date.now(), source: "ios-file-demo" });
     showApp();
-  } else if ((demoMode && storage.get("clinicnova.session", null)) || storage.get("clinicnova.localSession", null) || storage.get("clinicnova.previewSession", null)) showApp(); else showLogin();
+  } else if (demoMode && (storage.get("clinicnova.session", null) || storage.get("clinicnova.previewSession", null))) showApp(); else showLogin();
+  let backgroundedAt = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { backgroundedAt = Date.now(); return; }
+    if (!demoMode && authenticatedThisRun && backgroundedAt && Date.now() - backgroundedAt >= 5 * 60_000) {
+      closeModal(); showLogin(); showToast("Güvenlik için yerel oturum kilitlendi.");
+    }
+    backgroundedAt = 0;
+  });
   if (new URLSearchParams(window.location.search).has("sync")) setTimeout(() => syncPending(true), 500);
   else setTimeout(syncPending, 1500);
 })();

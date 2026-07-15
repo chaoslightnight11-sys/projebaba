@@ -2,6 +2,8 @@
 
 Windows ve macOS masaüstü istemcisi, Android ile aynı yerel-öncelikli iş akışını paketler. Kayıtlar Windows DPAPI veya macOS Keychain tarafından korunan Electron `safeStorage` ile uygulamanın özel profilinde şifreli tutulur. HTTPS ClinicNova hesabına giriş yapıldığında bekleyen işlemler aynı idempotent mobil senkronizasyon API'sine gönderilir.
 
+İlk açılışta internet gerektirmeyen bir yerel yönetici hesabı ve tek kullanımlık kurtarma kodu oluşturulur. Parolanın kendisi tutulmaz; PBKDF2-SHA-256 özeti saklanır. Beş hatalı deneme hesabı geçici kilitler. Yerel girişten sonra sunucu bağlantısı ayrıca kurulabilir.
+
 - Windows: `npm run desktop:win` → NSIS `.exe`
 - macOS Intel + Apple Silicon: `npm run desktop:mac` → universal `.dmg`
 

@@ -34,3 +34,17 @@ test("local-first clients push pending changes and pull a server snapshot", asyn
   assert.match(mobile, /applyServerSnapshot\(response\.snapshot\)/);
   assert.match(route, /getMobileSnapshot\(session, batch\.deviceId\)/);
 });
+
+test("offline clinic login stores only a derived password and supports Android native PBKDF2", async () => {
+  const [mobile, android] = await Promise.all([
+    readFile("mobile/assets/app.js", "utf8"),
+    readFile("mobile/src/app/clinicnova/mobile/MainActivity.java", "utf8")
+  ]);
+  assert.match(mobile, /PBKDF2/);
+  assert.match(mobile, /passwordHash/);
+  assert.match(mobile, /recoveryHash/);
+  assert.match(mobile, /failures >= 5/);
+  assert.doesNotMatch(mobile, /localAccount[^\n]*password:/);
+  assert.match(android, /PBKDF2WithHmacSHA256/);
+  assert.match(android, /spec\.clearPassword\(\)/);
+});

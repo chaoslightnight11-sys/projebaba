@@ -1,4 +1,4 @@
-# ClinicNova 1.6.0 — klinik kurulum kontrol listesi
+# ClinicNova 1.6.1 — klinik kurulum kontrol listesi
 
 ## Gitmeden önce alınacak bilgiler
 
@@ -37,8 +37,8 @@ npm run clinic:bootstrap
 1. Yönetici hesabıyla web uygulamasına giriş yapın ve hemen 2FA'yı etkinleştirin.
 2. Ayarlar bölümünde klinik/şube bilgilerini doğrulayın; her çalışan için kişisel hesap ve doğru rol oluşturun. Ortak parola kullanmayın.
 3. Bir test hastası, randevu, tedavi planı, peşinat ve hasta dosyası oluşturup webde tekrar açın.
-4. `ClinicNova-1.6.0.apk` dosyasını Android cihazlara kurun. Windows'ta `.exe`, macOS'ta `.dmg` paketini açın. Uygulamaları HTTPS sunucu adresine bağlayın ve test kaydının eşitlendiğini doğrulayın.
-5. APK SHA-256 değeri `42e4bf1d3ae93e590e033b16daa19a6d9d7a0c51184af252bf3def661b74bdce` olmalıdır.
+4. `ClinicNova-1.6.1.apk` dosyasını Android cihazlara kurun. Windows'ta `.exe`, macOS'ta `.dmg` paketini açın. İlk açılışta yerel yönetici hesabını ve kurtarma kodunu oluşturun; ardından gerekirse HTTPS sunucuya bağlanıp test kaydının eşitlendiğini doğrulayın.
+5. APK SHA-256 değeri `278e3a944f61e3e07570fe40db281942a0c7c5664008516f0b3600f9fed97979` olmalıdır.
 6. Bilgisayarlarda HTTPS adresini ana ekrana/masaüstüne ekleyin; kamera ve dosya yükleme izinlerini test edin.
 
 ## Canlı veri girmeden önce son kapı

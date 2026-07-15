@@ -204,24 +204,41 @@ test("bundled Android interface works offline", async ({ page }) => {
 
 test("production Android starts with an empty persistent local workspace", async ({ page }) => {
   await page.goto(mobileUrl);
-  await expect(page.getByRole("heading", { name: "Kliniğiniz çevrimdışı da çalışır." })).toBeVisible();
-  await expect(page.getByLabel("ClinicNova sunucu adresi")).toBeVisible();
-  await expect(page.getByLabel("E-posta")).toBeHidden();
-  await expect(page.getByLabel("Şifre")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Yerel çalışmayı başlat" })).toBeVisible();
-
-  await page.getByLabel("ClinicNova sunucu adresi").fill("http://guvensiz.example.com");
-  await page.getByRole("button", { name: "Yerel çalışmayı başlat" }).click();
-  await expect(page.getByRole("status")).toContainText("Geçerli bir HTTPS ClinicNova adresi girin.");
-  await expect(page).toHaveURL(mobileUrl);
-
-  await page.getByLabel("ClinicNova sunucu adresi").fill("");
-  await page.getByRole("button", { name: "Yerel çalışmayı başlat" }).click();
-  await expect(page.getByRole("heading", { name: /Günaydın/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Yerel yönetici hesabını oluşturun." })).toBeVisible();
+  await page.getByLabel("Klinik adı").fill("Nova Diş Kliniği");
+  await page.getByLabel("Yönetici adı").fill("Tuna Akın");
+  await page.getByLabel("E-posta").fill("tuna@nova.test");
+  await page.getByLabel("Parola").fill("GuvenliYerelParola!2026");
+  await page.getByRole("button", { name: "Hesabı oluştur ve başla" }).click();
+  await expect(page.getByRole("heading", { name: /Günaydın, Tuna/ })).toBeVisible();
+  const recoveryCode = (await page.locator("#modalBody strong").textContent())!.trim();
+  await page.getByRole("button", { name: "Anladım, kaydettim" }).click();
   await page.getByRole("button", { name: "Hastalar", exact: true }).click();
   await expect(page.locator("#patientList")).toContainText("Sonuç bulunamadı");
   await page.reload();
-  await expect(page.getByRole("heading", { name: /Günaydın/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nova Diş Kliniği hesabına giriş" })).toBeVisible();
+  await page.getByLabel("Parola").fill("yanlis-parola");
+  await page.getByRole("button", { name: "Çevrimdışı giriş yap" }).click();
+  await expect(page.getByRole("status")).toContainText("E-posta veya parola yanlış");
+  await page.getByLabel("Parola").fill("GuvenliYerelParola!2026");
+  await page.getByRole("button", { name: "Çevrimdışı giriş yap" }).click();
+  await expect(page.getByRole("heading", { name: /Günaydın, Tuna/ })).toBeVisible();
+  const account = await page.evaluate(() => JSON.parse(localStorage.getItem("clinicnova.localAccount") || "{}"));
+  expect(account).not.toHaveProperty("password");
+  expect(account.passwordHash).toMatch(/^[A-Za-z0-9+/]+=*$/);
+
+  await page.getByRole("button", { name: "Diğer", exact: true }).click();
+  await page.getByRole("button", { name: /Çıkış yap/ }).click();
+  await page.getByRole("button", { name: "Parolamı kurtarma koduyla sıfırla" }).click();
+  await page.getByLabel("Kurtarma kodu").fill(recoveryCode);
+  await page.getByLabel("Yeni parola").fill("YeniGuvenliParola!2026");
+  await page.getByRole("button", { name: "Parolayı yenile" }).click();
+  await expect(page.getByRole("heading", { name: "Parola yenilendi" })).toBeVisible();
+  await page.getByRole("button", { name: "Kaydettim" }).click();
+  await page.getByLabel("Parola", { exact: true }).fill("YeniGuvenliParola!2026");
+  await page.getByRole("button", { name: "Çevrimdışı giriş yap" }).click();
+  await page.getByRole("button", { name: "Ana Sayfa", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Günaydın, Tuna/ })).toBeVisible();
 });
 
 test("local Android records queue once and acknowledge server synchronization", async ({ page }) => {
@@ -236,7 +253,12 @@ test("local Android records queue once and acknowledge server synchronization", 
     };
   });
   await page.goto(mobileUrl);
-  await page.getByRole("button", { name: "Yerel çalışmayı başlat" }).click();
+  await page.getByLabel("Klinik adı").fill("Sync Klinik");
+  await page.getByLabel("Yönetici adı").fill("Sync Yönetici");
+  await page.getByLabel("E-posta").fill("sync@clinic.test");
+  await page.getByLabel("Parola").fill("GuvenliSyncParola!2026");
+  await page.getByRole("button", { name: "Hesabı oluştur ve başla" }).click();
+  await page.getByRole("button", { name: "Anladım, kaydettim" }).click();
   await page.getByRole("button", { name: "Hasta ekle" }).first().click();
   await page.locator('#patientForm input[name="name"]').fill("Yerel Hasta");
   await page.locator('#patientForm input[name="phone"]').fill("+90 555 222 33 44");
@@ -244,6 +266,8 @@ test("local Android records queue once and acknowledge server synchronization", 
   await expect(page.getByRole("status")).toContainText("Hasta başarıyla kaydedildi");
   await page.evaluate(() => localStorage.setItem("clinicnova.serverUrl", JSON.stringify("https://clinic.example.test")));
   await page.reload();
+  await page.getByLabel("Parola").fill("GuvenliSyncParola!2026");
+  await page.getByRole("button", { name: "Çevrimdışı giriş yap" }).click();
   await expect.poll(() => page.evaluate(() => (window as typeof window & { capturedSync?: { operations?: unknown[] } }).capturedSync?.operations?.length ?? 0)).toBe(1);
   await expect(page.getByText("Senkronlandı", { exact: true })).toBeVisible();
   const operation = await page.evaluate(() => (window as typeof window & { capturedSync?: { operations: Array<{ entityType: string; action: string; payload: { name: string } }> } }).capturedSync!.operations[0]);

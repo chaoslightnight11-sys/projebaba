@@ -21,6 +21,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import android.util.Base64;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -28,6 +29,8 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
@@ -191,6 +194,22 @@ public class MainActivity extends Activity {
     }
 
     private final class SyncBridge {
+        @JavascriptInterface
+        public String hashSecret(String secret, String saltBase64, int iterations) {
+            if (secret == null || saltBase64 == null || iterations < 100_000 || iterations > 1_000_000) return "";
+            PBEKeySpec spec = null;
+            try {
+                byte[] salt = Base64.decode(saltBase64, Base64.DEFAULT);
+                spec = new PBEKeySpec(secret.toCharArray(), salt, iterations, 256);
+                byte[] hash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();
+                return Base64.encodeToString(hash, Base64.NO_WRAP);
+            } catch (Exception ignored) {
+                return "";
+            } finally {
+                if (spec != null) spec.clearPassword();
+            }
+        }
+
         @JavascriptInterface
         public void sync(String serverUrl, String batchJson) {
             new Thread(() -> performSync(serverUrl, batchJson)).start();
