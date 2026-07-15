@@ -14,6 +14,8 @@ trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/ClinicNova-Clinic-Install-$version"
 cp "$apk" "$guide" "$stage/ClinicNova-Clinic-Install-$version/"
 cp .env.production.example "$stage/ClinicNova-Clinic-Install-$version/env.production.example"
+cp docker-compose.production.yml "$stage/ClinicNova-Clinic-Install-$version/"
+cp -R ops/deploy "$stage/ClinicNova-Clinic-Install-$version/server-deploy"
 {
   echo "ClinicNova clinic installation package"
   echo "Version: $version"
@@ -21,5 +23,6 @@ cp .env.production.example "$stage/ClinicNova-Clinic-Install-$version/env.produc
   echo "Created: $(date -u +%FT%TZ)"
 } > "$stage/ClinicNova-Clinic-Install-$version/INSTALL-MANIFEST.txt"
 (cd "$stage/ClinicNova-Clinic-Install-$version" && sha256sum "ClinicNova-$version.apk" > SHA256SUMS)
+rm -f "$root/releases/ClinicNova-Clinic-Install-$version.zip"
 (cd "$stage" && zip -qr "$root/releases/ClinicNova-Clinic-Install-$version.zip" "ClinicNova-Clinic-Install-$version")
 sha256sum "$root/releases/ClinicNova-Clinic-Install-$version.zip"

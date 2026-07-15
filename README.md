@@ -59,6 +59,7 @@ npm run start:production
 - Üretim kılavuzu: [`docs/PRODUCTION.md`](docs/PRODUCTION.md)
 - Android kılavuzu: [`mobile/README.md`](mobile/README.md)
 - Klinik kurulum kontrol listesi: [`docs/CLINIC-INSTALL.md`](docs/CLINIC-INSTALL.md)
+- Tek sunuculuk kurulum otomasyonu: [`ops/deploy/README.md`](ops/deploy/README.md)
 
 ## Android
 

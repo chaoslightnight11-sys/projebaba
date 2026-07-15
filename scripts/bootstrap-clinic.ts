@@ -1,6 +1,6 @@
 import { PrismaClient, Role } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { hashPassword } from "../src/lib/auth";
 
 const schema = z.object({
   clinicName: z.string().trim().min(2),
@@ -39,7 +39,7 @@ try {
   const existingOwner = await prisma.user.findUnique({ where: { email: input.data.ownerEmail }, select: { id: true } });
   if (existing || existingOwner) throw new Error("Aynı klinik kodu veya yönetici e-postası zaten var; ikinci kez başlangıç kurulumu yapılmadı.");
 
-  const passwordHash = await hashPassword(input.data.ownerPassword);
+  const passwordHash = await bcrypt.hash(input.data.ownerPassword, 12);
   const result = await prisma.$transaction(async (tx) => {
     const organization = await tx.organization.create({
       data: { name: input.data.clinicName, slug: input.data.clinicSlug, plan: "Klinik" }

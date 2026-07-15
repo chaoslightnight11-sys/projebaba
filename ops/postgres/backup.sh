@@ -8,10 +8,12 @@ set -euo pipefail
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 destination="$BACKUP_ROOT/base/$timestamp"
-install -d -m 0700 "$destination/base" "$WAL_ARCHIVE_ROOT"
+database_url="${BACKUP_DATABASE_URL:-$DATABASE_URL}"
+install -d -m 0700 "$destination/base"
+[[ -d "$WAL_ARCHIVE_ROOT" ]] || install -d -m 0700 "$WAL_ARCHIVE_ROOT"
 
-pg_basebackup --dbname="$DATABASE_URL" --pgdata="$destination/base" --format=plain --wal-method=stream --checkpoint=fast --progress
-pg_dump --dbname="$DATABASE_URL" --format=custom --file="$destination/clinicnova.dump"
+pg_basebackup --dbname="$database_url" --pgdata="$destination/base" --format=plain --wal-method=stream --checkpoint=fast --progress
+pg_dump --dbname="$database_url" --format=custom --file="$destination/clinicnova.dump"
 date -u +%FT%TZ > "$destination/completed-at.txt"
 (cd "$destination" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > "$destination/SHA256SUMS"
 

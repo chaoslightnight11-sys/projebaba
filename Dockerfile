@@ -8,12 +8,21 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM dependencies AS builder
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 COPY . .
 RUN npx prisma generate && npm run build
 
 FROM dependencies AS migrator
 COPY prisma ./prisma
 CMD ["npx", "prisma", "migrate", "deploy"]
+
+FROM dependencies AS bootstrap
+COPY prisma ./prisma
+COPY tsconfig.json ./tsconfig.json
+COPY scripts/bootstrap-clinic.ts ./scripts/bootstrap-clinic.ts
+RUN npx prisma generate
+CMD ["npm", "run", "clinic:bootstrap"]
 
 FROM dependencies AS file-migrator
 COPY prisma ./prisma
@@ -22,6 +31,16 @@ COPY scripts/migrate-patient-files-to-storage.ts ./scripts/migrate-patient-files
 COPY src/lib/secure-file-storage.ts ./src/lib/secure-file-storage.ts
 RUN npx prisma generate
 CMD ["npm", "run", "files:migrate"]
+
+FROM dependencies AS ops
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client rclone && rm -rf /var/lib/apt/lists/*
+COPY prisma ./prisma
+COPY tsconfig.json ./tsconfig.json
+COPY scripts ./scripts
+COPY ops ./ops
+COPY src ./src
+RUN npx prisma generate
+CMD ["npm", "run", "ops:check"]
 
 FROM base AS runner
 ENV NODE_ENV=production
