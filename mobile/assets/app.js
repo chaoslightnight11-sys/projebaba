@@ -148,6 +148,7 @@
   let syncQueue = storage.get("clinicnova.syncQueue", []);
   let syncMap = storage.get("clinicnova.syncMap", {});
   let syncing = false;
+  let productSearchInFlight = false;
   let authenticatedThisRun = false;
   let previewMode = false;
   let previewClinicName = "İnceleme Kliniği";
@@ -844,8 +845,8 @@
     openModal("STOK DETAYI", item.name, `<div class="modal-grid">
       <div class="finance-stats"><article class="finance-stat"><span>Mevcut</span><strong>${item.amount} ${escapeHtml(item.unit)}</strong><small>Minimum ${item.minimum}</small></article><article class="finance-stat"><span>Stok değeri</span><strong>${currency(Number(item.amount) * Number(item.purchasePrice || 0))}</strong><small>${currency(item.purchasePrice || 0)} / ${escapeHtml(item.unit)}</small></article></div>
       <p class="modal-note"><strong>${escapeHtml(item.category || "Kategorisiz")}</strong><br/>Tedarikçi: ${escapeHtml(item.supplier || "Belirtilmedi")}<br/>Son hareket: ${escapeHtml(item.movements?.[0]?.note || "Henüz hareket yok")}</p>
-      <div class="stock-actions"><button class="button button-primary" data-action="stock-movement" data-stock-prefill="${item.id}">Adet ekle / çıkar</button><button class="button button-secondary" data-action="add-stock-offer" data-stock-prefill="${item.id}">Satın alma fiyatı ekle</button></div>
-      <section class="patient-section"><div class="patient-section-title"><strong>Satın alma · ucuzdan pahalıya</strong><span>${offers.length}</span></div><div class="purchase-list">${offers.length ? offers.map((offer) => { const total = Number(offer.unitPrice) + Number(offer.shippingPrice || 0); return `<div class="purchase-row"><span><strong>${escapeHtml(offer.seller)}</strong><small>Ürün ${currency(offer.unitPrice)} + kargo ${currency(offer.shippingPrice || 0)}</small></span><span class="purchase-actions"><a class="mini-action" href="${escapeHtml(offer.productUrl)}" target="_blank" rel="noopener noreferrer">${currency(total)} · Satın al</a><button class="delete-button" data-delete-stock-offer="${offer.id}" data-stock-id="${item.id}" aria-label="${escapeHtml(offer.seller)} satın alma fiyatını sil">Sil</button></span></div>`; }).join("") : `<p class="empty-inline">Henüz fiyat bulunmuyor. Bir fiyat ekleyin veya bağlı sunucuda canlı fiyat arayın.</p>`}</div></section>
+      <div class="stock-actions"><button class="button button-primary" data-action="refresh-online-offers" data-stock-prefill="${item.id}" ${productSearchInFlight ? "disabled" : ""}>${productSearchInFlight ? "İnternette aranıyor…" : "İnternetten fiyatları getir"}</button><button class="button button-secondary" data-action="stock-movement" data-stock-prefill="${item.id}">Adet ekle / çıkar</button><button class="button button-secondary" data-action="add-stock-offer" data-stock-prefill="${item.id}">Elle fiyat ekle</button></div>
+      <section class="patient-section"><div class="patient-section-title"><strong>Satın alma · kargo dahil ucuzdan pahalıya</strong><span>${offers.length}</span></div><div class="purchase-list">${offers.length ? offers.map((offer) => { const total = Number(offer.unitPrice) + Number(offer.shippingPrice || 0); const checked = offer.checkedAt ? new Date(offer.checkedAt).toLocaleString("tr-TR") : "Elle eklendi"; return `<div class="purchase-row"><span><strong>${escapeHtml(offer.seller)}</strong><small>Ürün ${currency(offer.unitPrice)} + kargo ${currency(offer.shippingPrice || 0)} · ${escapeHtml(checked)}</small></span><span class="purchase-actions"><a class="mini-action" href="${escapeHtml(offer.productUrl)}" target="_blank" rel="noopener noreferrer">${currency(total)} · Satın al</a><button class="delete-button" data-delete-stock-offer="${offer.id}" data-stock-id="${item.id}" aria-label="${escapeHtml(offer.seller)} satın alma fiyatını sil">Sil</button></span></div>`; }).join("") : `<p class="empty-inline">Henüz teklif yok. “İnternetten fiyatları getir” ile güncel seçenekleri arayın.</p>`}</div></section>
       ${serverUrl ? `<a class="button button-secondary" href="${escapeHtml(serverUrl.replace(/\/$/, ""))}/dashboard/stocks">Canlı fiyatları sunucuda yenile</a>` : `<p class="modal-note">Canlı mağaza fiyatlarını karşılaştırmak için ClinicNova sunucunuzu bağlayın.</p>`}
     </div>`);
   }
@@ -857,6 +858,18 @@
       <label class="field">Satıcı<input name="seller" required /></label><div class="modal-grid two"><label class="field">Ürün fiyatı<input name="unitPrice" type="number" min="0.01" step="0.01" required /></label><label class="field">Kargo<input name="shippingPrice" type="number" min="0" step="0.01" value="0" /></label></div>
       <label class="field">Güvenli ürün adresi<input name="productUrl" type="url" pattern="https://.*" placeholder="https://..." required /></label>
       <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Fiyatı kaydet</button></div></form>`);
+  }
+
+  function refreshOnlineOffers(preferredItemId) {
+    const item = stockItems.find((entry) => Number(entry.id) === Number(preferredItemId));
+    if (!item) return showToast("Stok ürünü bulunamadı.");
+    const serverUrl = previewMode ? "" : storage.get("clinicnova.serverUrl", "");
+    if (!serverUrl || typeof window.ClinicNovaNative?.productSearch !== "function") return showToast("İnternet fiyatları için önce ClinicNova sunucusuna bağlanın.");
+    if (!navigator.onLine) return showToast("İnternet bağlantısı yok; kayıtlı fiyatlar gösteriliyor.");
+    if (productSearchInFlight) return showToast("Ürün fiyatı araması devam ediyor.");
+    productSearchInFlight = true;
+    openStockDetail(item.id);
+    window.ClinicNovaNative.productSearch(serverUrl, item.name, String(item.id));
   }
 
   function openPatientDetail(id) {
@@ -1105,6 +1118,9 @@
     for (const [type, items] of Object.entries(collections)) {
       for (const item of items) if (item.serverId) syncMap[`${type}:${item.id}`] = String(item.serverId);
     }
+    for (const stockItem of collections.STOCK_ITEM) {
+      for (const offer of stockItem.offers || []) if (offer.serverId) syncMap[`STOCK_OFFER:${offer.id}`] = String(offer.serverId);
+    }
     const localIdForServer = (type, localId) => {
       const mappedServerId = syncMap[`${type}:${localId}`];
       return mappedServerId ? serverIds[type]?.get(String(mappedServerId)) ?? localId : localId;
@@ -1169,6 +1185,28 @@
     if (syncQueue.length && response.synced > 0) setTimeout(syncPending, 300);
   };
   window.ClinicNovaNative?.onSyncResult?.(window.ClinicNovaSyncResult);
+
+  window.ClinicNovaProductSearchResult = (status, responseText, itemId) => {
+    productSearchInFlight = false;
+    let response = {};
+    try { response = JSON.parse(responseText || "{}"); } catch { response = {}; }
+    const item = stockItems.find((entry) => Number(entry.id) === Number(itemId));
+    if (!item) return showToast("Fiyatı aranan stok ürünü bulunamadı.");
+    if (status === 401 || status === 403) {
+      openStockDetail(item.id); showToast("Sunucu oturumu veya stok yetkisi gerekli."); return;
+    }
+    if (status < 200 || status >= 300 || !Array.isArray(response.offers)) {
+      openStockDetail(item.id); showToast(response.error || "İnternet fiyatları alınamadı."); return;
+    }
+    const checkedAt = String(response.checkedAt || new Date().toISOString());
+    const offers = response.offers.slice(0, 50).map((offer, index) => ({
+      id: Date.now() + index, seller: String(offer.seller || "").trim(), unitPrice: Number(offer.unitPrice), shippingPrice: Number(offer.shippingPrice || 0),
+      productUrl: String(offer.productUrl || "").trim(), inStock: offer.inStock !== false, checkedAt, source: "online"
+    })).filter((offer) => offer.seller.length >= 2 && Number.isFinite(offer.unitPrice) && offer.unitPrice > 0 && Number.isFinite(offer.shippingPrice) && offer.shippingPrice >= 0 && offer.productUrl.startsWith("https://"));
+    item.offers = offers.sort((left, right) => left.unitPrice + left.shippingPrice - right.unitPrice - right.shippingPrice);
+    saveData(); openStockDetail(item.id);
+    showToast(offers.length ? `${offers.length} internet teklifi güncellendi.` : "Bu ürün için satışta teklif bulunamadı.");
+  };
 
   function configureEntryMode() {
     if (demoMode) {
@@ -1332,7 +1370,7 @@
         const stockItem = stockItems.find((item) => Number(item.id) === Number(payload.stockId));
         if (stockItem) {
           (stockItem.offers ||= []).push(payload.offer);
-          queueCreate("STOCK_OFFER", payload.offer.id, { itemId: String(stockItem.id), seller: payload.offer.seller, unitPrice: payload.offer.unitPrice, shippingPrice: payload.offer.shippingPrice || 0, productUrl: payload.offer.productUrl, inStock: payload.offer.inStock !== false });
+          if (payload.offer.source !== "online") queueCreate("STOCK_OFFER", payload.offer.id, { itemId: String(stockItem.id), seller: payload.offer.seller, unitPrice: payload.offer.unitPrice, shippingPrice: payload.offer.shippingPrice || 0, productUrl: payload.offer.productUrl, inStock: payload.offer.inStock !== false });
         }
       }
       if (trashItem.kind === "communicationLog") communicationLog.unshift(payload);
@@ -1419,7 +1457,7 @@
       if (!stockItem || !offer || !window.confirm(`${offer.seller} satın alma fiyatı silinsin mi?`)) return;
       moveToTrash("stockOffer", `${stockItem.name} · ${offer.seller} fiyatı`, { stockId, offer });
       stockItem.offers = stockItem.offers.filter((item) => Number(item.id) !== offerId);
-      queueDelete("STOCK_OFFER", offerId);
+      if (offer.source !== "online") queueDelete("STOCK_OFFER", offerId);
       saveData(); openStockDetail(stockId); showToast("Satın alma fiyatı silindi."); return;
     }
     if (target.dataset.deleteTransaction) {
@@ -1532,6 +1570,7 @@
     if (action === "add-stock-item") { closeModal(); return openAddStockItem(); }
     if (action === "add-treatment-plan") { closeModal(); return openAddTreatmentPlan(); }
     if (action === "stock-movement") { closeModal(); return openStockMovement(target.dataset.stockPrefill); }
+    if (action === "refresh-online-offers") return refreshOnlineOffers(target.dataset.stockPrefill);
     if (action === "add-stock-offer") { closeModal(); return openAddStockOffer(target.dataset.stockPrefill); }
     if (action === "add-stock-recipe") { closeModal(); return openAddStockRecipe(); }
     if (action === "add-treatment-history") return openAddTreatmentHistory(target.dataset.patientPrefill);
@@ -1838,7 +1877,7 @@
       event.preventDefault();
       const form = new FormData(event.target);
       const item = stockItems.find((entry) => Number(entry.id) === Number(form.get("itemId")));
-      const offer = { id: Date.now(), seller: String(form.get("seller") || "").trim(), unitPrice: Number(form.get("unitPrice")), shippingPrice: Number(form.get("shippingPrice") || 0), productUrl: String(form.get("productUrl") || "").trim(), inStock: true };
+      const offer = { id: Date.now(), seller: String(form.get("seller") || "").trim(), unitPrice: Number(form.get("unitPrice")), shippingPrice: Number(form.get("shippingPrice") || 0), productUrl: String(form.get("productUrl") || "").trim(), inStock: true, source: "manual" };
       if (!item || !offer.seller || !Number.isFinite(offer.unitPrice) || offer.unitPrice <= 0 || !offer.productUrl.startsWith("https://")) return showToast("Satıcı, fiyat ve HTTPS ürün adresini kontrol edin.");
       (item.offers ||= []).push(offer); queueCreate("STOCK_OFFER", offer.id, { itemId: String(item.id), seller: offer.seller, unitPrice: offer.unitPrice, shippingPrice: offer.shippingPrice, productUrl: offer.productUrl, inStock: offer.inStock }); saveData(); renderAll(); openStockDetail(item.id); showToast("Satın alma fiyatı kaydedildi.");
     }

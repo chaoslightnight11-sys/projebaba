@@ -214,6 +214,60 @@ public class MainActivity extends Activity {
         public void sync(String serverUrl, String batchJson) {
             new Thread(() -> performSync(serverUrl, batchJson)).start();
         }
+
+        @JavascriptInterface
+        public void productSearch(String serverUrl, String query, String itemId) {
+            new Thread(() -> performProductSearch(serverUrl, query, itemId)).start();
+        }
+    }
+
+    private void performProductSearch(String serverUrl, String query, String itemId) {
+        HttpURLConnection connection = null;
+        int status = 0;
+        String responseBody = "";
+        try {
+            URL base = new URL(serverUrl);
+            if (!"https".equalsIgnoreCase(base.getProtocol()) || base.getHost() == null || base.getHost().isEmpty()) {
+                throw new IllegalArgumentException("HTTPS sunucu adresi gerekli.");
+            }
+            String normalizedQuery = query == null ? "" : query.trim();
+            if (normalizedQuery.length() < 2 || normalizedQuery.length() > 200) throw new IllegalArgumentException("Ürün adı geçersiz.");
+            URL endpoint = new URL(base.getProtocol(), base.getHost(), base.getPort(), "/api/mobile/product-search");
+            connection = (HttpURLConnection) endpoint.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(15_000);
+            connection.setReadTimeout(30_000);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("User-Agent", "ClinicNovaAndroid/" + appVersion());
+            String cookies = CookieManager.getInstance().getCookie(serverUrl);
+            if (cookies != null && !cookies.isEmpty()) connection.setRequestProperty("Cookie", cookies);
+            byte[] body = new JSONObject().put("query", normalizedQuery).toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream output = connection.getOutputStream()) { output.write(body); }
+            status = connection.getResponseCode();
+            InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            if (stream != null) {
+                StringBuilder response = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) response.append(line);
+                }
+                responseBody = response.toString();
+            }
+        } catch (Exception error) {
+            status = 0;
+            responseBody = "{\"error\":" + JSONObject.quote(error.getMessage() == null ? "İnternet fiyatları alınamadı." : error.getMessage()) + "}";
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+        final int callbackStatus = status;
+        final String callbackBody = responseBody;
+        final String callbackItemId = itemId == null ? "" : itemId;
+        runOnUiThread(() -> {
+            if (webView == null) return;
+            webView.evaluateJavascript("window.ClinicNovaProductSearchResult && window.ClinicNovaProductSearchResult(" + callbackStatus + "," + JSONObject.quote(callbackBody) + "," + JSONObject.quote(callbackItemId) + ")", null);
+        });
     }
 
     private void performSync(String serverUrl, String batchJson) {

@@ -382,6 +382,7 @@ export async function getMobileSnapshot(session: AuthSession, deviceId: string) 
     ...payments.map((item) => ["PAYMENT", item.id]),
     ...plans.map((item) => ["TREATMENT_PLAN", item.id]),
     ...stocks.map((item) => ["STOCK_ITEM", item.id]),
+    ...stocks.flatMap((item) => item.offers.map((offer) => ["STOCK_OFFER", offer.id])),
     ...recipes.map((item) => ["STOCK_RECIPE", item.id]),
     ...doctors.map((item) => ["DOCTOR", item.id])
   ].map(([entityType, serverEntityId]) => {
@@ -430,7 +431,7 @@ export async function getMobileSnapshot(session: AuthSession, deviceId: string) 
     stockItems: stocks.map((item) => ({
       id: localSnapshotId("STOCK_ITEM", item.id), serverId: item.id, name: item.name, category: item.category, amount: item.currentQuantity,
       minimum: item.minimumQuantity, unit: item.unit, supplier: item.supplier ?? "", purchasePrice: Number(item.purchasePrice), movements: [],
-      offers: item.offers.map((offer) => ({ seller: offer.seller, unitPrice: Number(offer.unitPrice), shippingPrice: Number(offer.shippingPrice), productUrl: offer.productUrl, inStock: offer.inStock }))
+      offers: item.offers.map((offer) => ({ id: localSnapshotId("STOCK_OFFER", offer.id), serverId: offer.id, seller: offer.seller, unitPrice: Number(offer.unitPrice), shippingPrice: Number(offer.shippingPrice), productUrl: offer.productUrl, inStock: offer.inStock, checkedAt: offer.checkedAt.toISOString(), source: "server" }))
     })),
     stockRecipes: recipes.map((recipe) => ({
       id: localSnapshotId("STOCK_RECIPE", recipe.id), serverId: recipe.id, treatmentType: recipe.treatmentType,
