@@ -71,7 +71,7 @@ export function LanguageToggle({
             type="button"
             onClick={() => setLocale(language.locale)}
             className={cn(
-              "rounded font-semibold transition",
+              "rounded font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
               variant === "prominent" ? "h-9 min-w-12 px-3 text-sm" : "h-8 min-w-9 px-2 text-xs",
               locale === language.locale ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}

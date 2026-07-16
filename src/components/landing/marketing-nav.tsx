@@ -16,15 +16,15 @@ export function MarketingNav() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/92 backdrop-blur">
       <div className="container flex min-h-16 items-center gap-4">
-        <Link href="/" className="flex items-center gap-2 font-semibold">
+        <Link href="/" className="flex rounded-md items-center gap-2 font-semibold" aria-label="ClinicNova ana sayfa">
           <span className="grid h-9 w-9 place-items-center rounded-md bg-primary text-primary-foreground">
             <Activity className="h-5 w-5" />
           </span>
           ClinicNova
         </Link>
-        <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
+        <nav aria-label="Ana menü" className="hidden items-center gap-1 text-sm text-muted-foreground md:flex">
           {links.map(([label, href]) => (
-            <Link key={href} href={href} className="transition hover:text-foreground">
+            <Link key={href} href={href} className="rounded-md px-3 py-2 transition hover:bg-muted hover:text-foreground">
               {label}
             </Link>
           ))}

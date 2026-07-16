@@ -1,32 +1,14 @@
 "use client";
 
-import { Activity, BarChart3, BellRing, Boxes, CalendarDays, ClipboardCheck, ClipboardList, CreditCard, HeartPulse, LayoutDashboard, Menu, MessageSquare, Plane, Settings, Stethoscope, Users, UserRoundCog, X } from "lucide-react";
+import { Activity, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { dashboardNavLabels, shellText, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { canAccess, type ModuleKey } from "@/lib/rbac";
+import { isNavigationItemActive, navigationForRole } from "@/lib/dashboard-navigation";
 import type { Role } from "@prisma/client";
-
-const navItems = [
-  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/patients", key: "patients", icon: Users },
-  { href: "/dashboard/appointments", key: "appointments", icon: CalendarDays },
-  { href: "/dashboard/treatments", key: "treatments", icon: Stethoscope },
-  { href: "/dashboard/treatment-plans", key: "treatmentPlans", icon: ClipboardList },
-  { href: "/dashboard/finance", key: "finance", icon: CreditCard },
-  { href: "/dashboard/stocks", key: "stocks", icon: Boxes },
-  { href: "/dashboard/staff", key: "staff", icon: UserRoundCog },
-  { href: "/dashboard/consents", key: "consents", icon: ClipboardCheck },
-  { href: "/dashboard/surveys", key: "surveys", icon: HeartPulse },
-  { href: "/dashboard/communication", key: "communication", icon: MessageSquare },
-  { href: "/dashboard/tourism", key: "tourism", icon: Plane },
-  { href: "/dashboard/recalls", key: "recalls", icon: BellRing },
-  { href: "/dashboard/reports", key: "reports", icon: BarChart3 },
-  { href: "/dashboard/settings", key: "settings", icon: Settings }
-];
 
 export function MobileSidebar({ locale = "tr", role }: { locale?: Locale; role: Role }) {
   const pathname = usePathname();
@@ -58,10 +40,10 @@ export function MobileSidebar({ locale = "tr", role }: { locale?: Locale; role: 
               </Button>
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {navItems.filter((item) => canAccess(role, (item.key === "treatmentPlans" ? "treatments" : item.key) as ModuleKey)).map((item) => {
-                const active = item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
+              {navigationForRole(role).map((item) => {
+                const active = isNavigationItemActive(pathname, item.href);
                 return (
-                <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground", active && "bg-primary/10 font-medium text-primary")}>
+                <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("nav-item", active && "nav-item-active")}>
                   <item.icon className="h-4 w-4" />
                   <span>{labels[item.key]}</span>
                 </Link>

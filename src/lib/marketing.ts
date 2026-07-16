@@ -61,17 +61,19 @@ export const plans = [
 ];
 
 export const faqs = [
-  ["Sistem kurulumu gerekiyor mu?", "Hayır. ClinicNova bulut mimarisine uygun tasarlanır; yerel kurulum gerektirmez."],
-  ["Veriler güvenli mi?", "Şifre hashleme, rol bazlı erişim, organizasyon filtresi, güvenlik başlıkları ve audit log yaklaşımı uygulanır."],
-  ["Eski yazılımdan veri aktarılır mı?", "Evet. Veri import katmanı için mimari hazırlandı; gerçek import sonraki fazda genişletilebilir."],
-  ["Mobilde çalışır mı?", "Evet. Landing ve dashboard responsive tasarıma sahiptir."],
-  ["Çoklu şube desteklenir mi?", "Evet. Organization ve Branch modelleriyle çoklu şube yapısı kuruludur."],
-  ["Eğitim ve destek var mı?", "Demo ve iletişim formları destek sürecine bağlanacak şekilde database’e kaydedilir."]
+  ["Sistem kurulumu gerekiyor mu?", "Kullanım biçimine göre değişir. ClinicNova Windows, macOS ve Android'e kurulabilir; çevrimdışı yerel kullanımın yanında HTTPS sunucuya bağlanıp eşitleme de desteklenir."],
+  ["İnternet kesilirse kayıtlar kaybolur mu?", "Hayır. Hasta, randevu, tedavi, ödeme ve stok işlemleri cihazda kalıcı tutulur. Sunucu bağlantısı varsa bekleyen değişiklikler bağlantı geri geldiğinde eşitlenir."],
+  ["Çevrimdışı kullanımda giriş güvenliği var mı?", "Evet. İlk kurulumda yerel yönetici hesabı ve parola oluşturulur; sonraki açılışlarda internet olmasa da giriş istenir. Parolanın kendisi düz metin olarak saklanmaz."],
+  ["Veriler güvenli mi?", "Yerel giriş koruması, rol bazlı erişim, organizasyon filtresi, güvenlik başlıkları ve denetim kaydı kontrolleri uygulanır. Cihaz kaybına karşı ayrıca düzenli yedek önerilir."],
+  ["Eski yazılımdan veri aktarılır mı?", "Aktarım biçimi mevcut sistemin dışa aktardığı dosyalara göre planlanır. Klinik verisi incelenmeden otomatik ve eksiksiz aktarım sözü verilmez."],
+  ["Mobilde çalışır mı?", "Evet. Android uygulaması ve telefon ekranlarına uyumlu arayüz vardır. iPhone tarafında kurulum yöntemi ayrıca değerlendirilir."],
+  ["Çoklu şube desteklenir mi?", "Evet. Organizasyon ve şube bazlı veri ayrımı ile yetkilendirme altyapısı bulunur."],
+  ["Modüller nasıl yönetilir?", "Modüller ortak bir katalog ve rol yetkileri üzerinden sunulur. Klinik görevine göre yalnız gerekli alanlar gösterilerek menü sade tutulabilir."]
 ];
 
 export const highlightCards = [
-  { label: "Operasyon AI", value: "Akıllı öncelikler", icon: Sparkles },
-  { label: "Güvenlik", value: "RBAC + Audit", icon: ShieldCheck },
+  { label: "Günlük akış", value: "Tek ekranda öncelikler", icon: Sparkles },
+  { label: "Güvenlik", value: "Rol bazlı erişim", icon: ShieldCheck },
   { label: "Uyarılar", value: "Stok, ödeme, recall", icon: BellRing },
   { label: "Raporlama", value: "CSV + yönetim özeti", icon: FileText }
 ];

@@ -7,6 +7,11 @@ test("public experience is responsive and sends security headers", async ({ page
   await expect(page.getByRole("link", { name: "Gizlilik" })).toBeVisible();
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
 
+  const demoLink = page.getByRole("link", { name: "Demo Talep Et" }).first();
+  await demoLink.focus();
+  const focusedStyle = await demoLink.evaluate((element) => getComputedStyle(element).boxShadow);
+  expect(focusedStyle, "Klavye odağı görünür bir halka göstermeli").not.toBe("none");
+
   const headers = response?.headers() ?? {};
   expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(headers["permissions-policy"]).toContain("camera=(self)");
@@ -24,6 +29,10 @@ test("public experience is responsive and sends security headers", async ({ page
   await page.getByLabel("E-posta").fill("owner@clinicnova.test");
   await page.getByRole("button", { name: "Şifre bağlantısı gönder" }).click();
   await expect(page.getByText("Hesap bulunursa şifre yenileme bağlantısı e-posta ile gönderilir.")).toBeVisible();
+
+  await page.goto("/faq");
+  await expect(page.getByText(/Windows, macOS ve Android'e kurulabilir/)).toBeVisible();
+  await expect(page.getByText(/yerel yönetici hesabı ve parola oluşturulur/)).toBeVisible();
 });
 
 test("outdated signed Android clients receive the secure update notice", async ({ page }) => {

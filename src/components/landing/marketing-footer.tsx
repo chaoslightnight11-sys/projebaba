@@ -14,7 +14,7 @@ export function MarketingFooter() {
     <footer className="border-t bg-card">
       <div className="container grid gap-8 py-10 md:grid-cols-[1fr_auto] md:items-end">
         <div>
-          <Link href="/" className="inline-flex items-center gap-2 font-semibold">
+          <Link href="/" className="inline-flex rounded-md items-center gap-2 font-semibold" aria-label="ClinicNova ana sayfa">
             <span className="grid h-9 w-9 place-items-center rounded-md bg-primary text-primary-foreground">
               <Activity className="h-5 w-5" />
             </span>
@@ -26,10 +26,10 @@ export function MarketingFooter() {
           <p className="mt-3 text-xs text-muted-foreground">© {new Date().getFullYear()} ClinicNova. Tüm hakları saklıdır.</p>
         </div>
         <nav aria-label="Yasal bağlantılar" className="flex flex-wrap gap-x-5 gap-y-3 text-sm text-muted-foreground">
-          <Link className="hover:text-foreground" href="/privacy">Gizlilik</Link>
-          <Link className="hover:text-foreground" href="/terms">Kullanım koşulları</Link>
-          <Link className="hover:text-foreground" href="/security">Güvenlik</Link>
-          <Link className="hover:text-foreground" href="/contact">İletişim</Link>
+          <Link className="text-link" href="/privacy">Gizlilik</Link>
+          <Link className="text-link" href="/terms">Kullanım koşulları</Link>
+          <Link className="text-link" href="/security">Güvenlik</Link>
+          <Link className="text-link" href="/contact">İletişim</Link>
         </nav>
       </div>
     </footer>

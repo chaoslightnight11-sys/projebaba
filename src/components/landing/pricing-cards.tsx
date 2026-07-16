@@ -9,14 +9,14 @@ export function PricingCards() {
   return (
     <div className="grid gap-5 lg:grid-cols-3">
       {plans.map((plan) => (
-        <Card key={plan.name} className={cn(plan.highlighted && "border-primary shadow-soft")}>
+        <Card key={plan.name} className={cn("flex h-full flex-col", plan.highlighted && "border-primary shadow-soft")}>
           <CardHeader>
             <CardTitle>{plan.name}</CardTitle>
             <p className="text-sm text-muted-foreground">{plan.description}</p>
             <div className="pt-4 text-3xl font-semibold">{plan.price}</div>
           </CardHeader>
-          <CardContent>
-            <ul className="space-y-3 text-sm">
+          <CardContent className="flex flex-1 flex-col">
+            <ul className="flex-1 space-y-3 text-sm">
               {plan.limits.map((item) => (
                 <li key={item} className="flex gap-2">
                   <Check className="mt-0.5 h-4 w-4 text-primary" />

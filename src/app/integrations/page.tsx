@@ -1,4 +1,4 @@
-import { Cable, CheckCircle2 } from "lucide-react";
+import { Cable, Settings2 } from "lucide-react";
 import { MarketingNav } from "@/components/landing/marketing-nav";
 import { Card, CardContent } from "@/components/ui/card";
 import { integrations } from "@/lib/marketing";
@@ -22,8 +22,8 @@ export default function IntegrationsPage() {
                 <div>
                   <p className="font-medium">{integration}</p>
                   <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                    <CheckCircle2 className="h-3 w-3 text-primary" />
-                    Güvenli adapter hazır
+                    <Settings2 className="h-3 w-3 text-primary" />
+                    Yetkili sağlayıcıyla yapılandırılır
                   </p>
                 </div>
               </CardContent>
