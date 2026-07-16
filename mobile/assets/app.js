@@ -210,6 +210,9 @@
   function localAccount() {
     return storage.get("clinicnova.localAccount", null);
   }
+  function currentClinicName() {
+    return previewMode ? previewClinicName : localAccount()?.clinicName || "ClinicNova";
+  }
   function applyLocalIdentity(account = localAccount()) {
     if (previewMode) {
       $("#branchLabel").textContent = previewClinicName;
@@ -365,7 +368,7 @@
   }
 
   function clinicConfigPayload() {
-    return { clinicName: localAccount()?.clinicName || "ClinicNova", chairs: clinicChairs };
+    return { clinicName: currentClinicName(), chairs: clinicChairs };
   }
 
   function moveToTrash(kind, label, payload) {
@@ -521,7 +524,7 @@
       ["İmzalı", signed, "Tamamlanan onam"], ["Bekleyen", pending, "Hasta aksiyonu"], ["Taslak", drafts, "Gönderilmeyi bekliyor"], ["Toplam", consentRecords.length, "Onam kaydı"]
     ].map(([label, value, detail]) => `<article class="finance-stat"><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`).join("");
     $$("#consentFilterChips button").forEach((button) => button.classList.toggle("active", button.dataset.consentFilter === state.consentFilter));
-    $("#consentList").innerHTML = visible.length ? visible.map((item) => `<article class="offline-record record-deletable"><button class="consent-main" data-consent="${item.id}"><span class="transaction-icon ${item.status === "İmzalandı" ? "" : item.status === "Taslak" ? "expense" : "pending"}">${item.status === "İmzalandı" ? "✓" : item.status === "Taslak" ? "…" : "!"}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.form)} · ${escapeHtml(item.language || "Türkçe")}</small><span class="installment-note">${escapeHtml(item.channel || "Klinikte")} · ${escapeHtml(item.date)}</span></span><span class="record-state">${escapeHtml(item.status)}</span></button><button class="delete-button" data-delete-record="${item.id}" data-record-kind="consentRecords" aria-label="${escapeHtml(item.patient)} onam kaydını sil">Sil</button></article>`).join("") : `<div class="empty-state"><strong>Onam bulunamadı</strong><br/>Filtreyi değiştirin veya yeni bir onam oluşturun.</div>`;
+    $("#consentList").innerHTML = visible.length ? visible.map((item) => `<article class="offline-record record-deletable"><button class="consent-main" data-consent="${item.id}"><span class="transaction-icon ${item.status === "İmzalandı" ? "" : ["Taslak", "İptal edildi"].includes(item.status) ? "expense" : "pending"}">${item.status === "İmzalandı" ? "✓" : item.status === "Taslak" ? "…" : item.status === "İptal edildi" ? "×" : "!"}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.form)} · ${escapeHtml(item.language || "Türkçe")}</small><span class="installment-note">${escapeHtml(item.channel || "Klinikte")} · ${escapeHtml(item.date)}</span></span><span class="record-state">${escapeHtml(item.status)}</span></button><button class="delete-button" data-delete-record="${item.id}" data-record-kind="consentRecords" aria-label="${escapeHtml(item.patient)} onam kaydını sil">Sil</button></article>`).join("") : `<div class="empty-state"><strong>Onam bulunamadı</strong><br/>Filtreyi değiştirin veya yeni bir onam oluşturun.</div>`;
   }
 
   function renderModules() {
@@ -658,8 +661,24 @@
       <div class="finance-stats"><article class="finance-stat"><span>${item.type === "expense" ? "Gider" : "Tahsil edilen"}</span><strong>${currency(item.amount)}</strong><small>${escapeHtml(item.date)}</small></article><article class="finance-stat"><span>${item.type === "expense" ? "Kategori" : "Kalan bakiye"}</span><strong>${item.type === "expense" ? escapeHtml(item.category || "Diğer") : currency(remaining)}</strong><small>${item.type === "expense" ? escapeHtml(item.method || "Belirtilmedi") : `${item.paidInstallments || 0}/${item.installmentCount || 1} taksit`}</small></article></div>
       <p class="modal-note"><strong>${escapeHtml(item.detail)}</strong>${item.isDeposit ? "<br/>Peşinat olarak işlendi." : ""}</p>
       ${item.components?.length ? `<section class="patient-section"><div class="patient-section-title"><strong>İşlem kalemleri</strong><span>${item.components.length}</span></div><div class="history-list">${item.components.map((line) => `<article><i>₺</i><span><strong>${escapeHtml(line.name)}</strong><small>${currency(line.amount)}</small></span></article>`).join("")}</div></section>` : ""}
-      ${remaining > 0 ? `<div class="finance-progress"><span style="width:${Math.min(100, Math.round(Number(item.amount || 0) / Number(item.totalAmount || item.amount || 1) * 100))}%"></span></div><button class="button button-primary" data-action="add-payment" data-patient-prefill="${item.patientId || ""}">Yeni tahsilat ekle</button>` : ""}
+      ${item.paymentHistory?.length ? `<section class="patient-section"><div class="patient-section-title"><strong>Tahsilat geçmişi</strong><span>${item.paymentHistory.length}</span></div><div class="history-list">${item.paymentHistory.map((entry) => `<article><i>₺</i><span><strong>${currency(entry.amount)} · ${escapeHtml(entry.method)}</strong><small>${escapeHtml(entry.date)}</small><p>${escapeHtml(entry.note)}</p></span></article>`).join("")}</div></section>` : ""}
+      ${remaining > 0 ? `<div class="finance-progress"><span style="width:${Math.min(100, Math.round(Number(item.amount || 0) / Number(item.totalAmount || item.amount || 1) * 100))}%"></span></div><button class="button button-primary" data-pay-balance="${item.id}">Bu plana tahsilat işle</button>` : ""}
     </div>`);
+  }
+
+  function openBalancePayment(id) {
+    const item = state.transactions.find((entry) => Number(entry.id) === Number(id));
+    const remaining = item ? outstandingAmount(item) : 0;
+    if (!item || item.type === "expense" || remaining <= 0) return showToast("Açık ödeme planı bulunamadı.");
+    const unpaidInstallments = Math.max(1, Number(item.installmentCount || 1) - Number(item.paidInstallments || 0));
+    const suggested = Math.min(remaining, Math.ceil(remaining / unpaidInstallments));
+    openModal("TAKSİT TAHSİLATI", item.name, `<form id="balancePaymentForm" class="modal-grid"><input type="hidden" name="transactionId" value="${item.id}" />
+      <div class="finance-stats"><article class="finance-stat"><span>Kalan bakiye</span><strong>${currency(remaining)}</strong><small>${item.paidInstallments || 0}/${item.installmentCount || 1} taksit ödendi</small></article><article class="finance-stat"><span>Önerilen ödeme</span><strong>${currency(suggested)}</strong><small>${unpaidInstallments} taksit kaldı</small></article></div>
+      <div class="modal-grid two"><label class="field">Alınan tutar<input name="amount" type="number" inputmode="decimal" min="0.01" max="${remaining}" step="0.01" value="${suggested}" required /></label><label class="field">Ödeme yöntemi<select name="method"><option>Kart</option><option>Nakit</option><option>Transfer</option><option>Online</option></select></label></div>
+      <label class="field">Açıklama<input name="note" value="Taksit tahsilatı" required /></label>
+      <p class="modal-note">Bu ödeme mevcut plana işlenir; yeni ve bağımsız bir borç kaydı oluşturmaz.</p>
+      <div class="modal-actions"><button type="button" class="button button-secondary" data-finance-transaction="${item.id}">Vazgeç</button><button type="submit" class="button button-primary">Tahsilatı kaydet</button></div>
+    </form>`);
   }
 
   function openConsentDetail(id) {
@@ -707,7 +726,7 @@
     openModal("TEDAVİ PLANLAMA", "Yeni tedavi planı", `<form id="treatmentPlanForm" class="modal-grid">
       <label class="field">Hasta<select name="patientId" required>${patientOptions}</select></label>
       <div class="modal-grid two"><label class="field">Tedavi türü<input name="treatment" required placeholder="İmplant, kanal tedavisi..." /></label><label class="field">Diş / bölge<input name="tooth" placeholder="Örn. 36 veya tüm ağız" /></label></div>
-      <div class="modal-grid two"><label class="field">Hekim<select name="doctor" required>${clinicDoctors.map((doctor) => `<option>${escapeHtml(doctor.name)}</option>`).join("")}</select></label><label class="field">Şube<input name="branch" value="${escapeHtml(localAccount()?.clinicName || "ClinicNova")}" required /></label></div>
+      <div class="modal-grid two"><label class="field">Hekim<select name="doctor" required>${clinicDoctors.map((doctor) => `<option>${escapeHtml(doctor.name)}</option>`).join("")}</select></label><label class="field">Şube<input name="branch" value="${escapeHtml(currentClinicName())}" required /></label></div>
       <div class="modal-grid two"><label class="field">Plan tarihi<input name="date" type="date" value="${todayIso}" required /></label><label class="field">Durum<select name="status"><option value="PROPOSED">Önerildi</option><option value="ACCEPTED">Kabul edildi</option><option value="STARTED">Başladı</option><option value="COMPLETED">Tamamlandı</option><option value="CANCELLED">İptal</option></select></label></div>
       <div class="modal-grid two"><label class="field">Toplam ücret<input name="total" type="number" min="0" step="1" value="0" required /></label><label class="field">Alınan peşinat / ödeme<input name="paid" type="number" min="0" step="1" value="0" required /></label></div>
       <div class="modal-grid two"><label class="field">Taksit sayısı<select name="installmentCount"><option value="1">Tek çekim</option><option value="2">2 taksit</option><option value="3">3 taksit</option><option value="4">4 taksit</option><option value="6">6 taksit</option><option value="9">9 taksit</option><option value="12">12 taksit</option><option value="18">18 taksit</option><option value="24">24 taksit</option></select></label><label class="field">İlk taksit tarihi<input name="firstInstallmentDate" type="date" value="${todayIso}" /></label></div>
@@ -756,9 +775,8 @@
   }
 
   function openClinicManagement() {
-    const account = localAccount() || {};
     openModal("KLİNİK AYARLARI", "Klinik yönetimi", `<div class="modal-grid">
-      <p class="modal-note"><strong>${escapeHtml(account.clinicName || "ClinicNova")}</strong><br/>Randevu ve tedavi formlarındaki doktor ile koltuk seçeneklerini buradan yönetin.</p>
+      <p class="modal-note"><strong>${escapeHtml(currentClinicName())}</strong><br/>Randevu ve tedavi formlarındaki doktor ile koltuk seçeneklerini buradan yönetin.</p>
       <button class="button button-secondary" data-action="rename-clinic">Klinik adını değiştir</button>
       <div class="section-heading"><div><span class="eyebrow">HEKİMLER</span><h3>Doktorlar</h3></div><button class="text-button" data-action="add-doctor">Doktor ekle</button></div>
       <div class="list-stack">${clinicDoctors.map((doctor) => `<article class="offline-record record-deletable"><span class="record-icon">👨‍⚕️</span><span class="patient-copy"><strong>${escapeHtml(doctor.name)}</strong><small>${escapeHtml(doctor.specialty || "Diş hekimi")} · ${escapeHtml(doctor.email || "")}</small></span><button class="delete-button" data-delete-doctor="${doctor.id}">Sil</button></article>`).join("") || `<div class="empty-state">Doktor eklenmedi.</div>`}</div>
@@ -783,7 +801,7 @@
     const item = stockItems.find((entry) => Number(entry.id) === Number(id));
     if (!item) return;
     const offers = Array.isArray(item.offers) ? [...item.offers].filter((offer) => offer.inStock !== false).sort((a, b) => (Number(a.unitPrice) + Number(a.shippingPrice || 0)) - (Number(b.unitPrice) + Number(b.shippingPrice || 0))) : [];
-    const serverUrl = storage.get("clinicnova.serverUrl", "");
+    const serverUrl = previewMode ? "" : storage.get("clinicnova.serverUrl", "");
     openModal("STOK DETAYI", item.name, `<div class="modal-grid">
       <div class="finance-stats"><article class="finance-stat"><span>Mevcut</span><strong>${item.amount} ${escapeHtml(item.unit)}</strong><small>Minimum ${item.minimum}</small></article><article class="finance-stat"><span>Stok değeri</span><strong>${currency(Number(item.amount) * Number(item.purchasePrice || 0))}</strong><small>${currency(item.purchasePrice || 0)} / ${escapeHtml(item.unit)}</small></article></div>
       <p class="modal-note"><strong>${escapeHtml(item.category || "Kategorisiz")}</strong><br/>Tedarikçi: ${escapeHtml(item.supplier || "Belirtilmedi")}<br/>Son hareket: ${escapeHtml(item.movements?.[0]?.note || "Henüz hareket yok")}</p>
@@ -924,13 +942,13 @@
       "Çöp Kutusu": `<div class="modal-grid"><p class="modal-note">Silinen kayıtlar 30 gün burada saklanır. Süre dolunca otomatik ve kalıcı olarak temizlenir.</p><div class="list-stack">${trashItems.map((item) => `<article class="trash-record"><span class="record-icon">♻</span><span class="patient-copy"><strong>${escapeHtml(item.label)}</strong><small>${trashDaysLeft(item)} gün kaldı</small></span><button class="mini-action" data-restore-trash="${item.id}">Geri yükle</button><button class="delete-button" data-purge-trash="${item.id}" aria-label="${escapeHtml(item.label)} kaydını kalıcı sil">Kalıcı sil</button></article>`).join("") || `<p class="empty-inline">Çöp Kutusu boş.</p>`}</div>${trashItems.length ? `<button class="button button-secondary" data-empty-trash>Çöp Kutusunu boşalt</button>` : ""}</div>`
     };
     const routes = { "Tedavi planları": "treatment-plans", "Sağlık turizmi": "tourism/leads", "Stok": "stocks", "İletişim": "communication", "Raporlar": "reports", "Dijital onam": "consents" };
-    const serverUrl = storage.get("clinicnova.serverUrl", "");
+    const serverUrl = previewMode ? "" : storage.get("clinicnova.serverUrl", "");
     const liveButton = serverUrl ? `<a class="button button-secondary" href="${escapeHtml(serverUrl.replace(/\/$/, ""))}/dashboard/${routes[name] || ""}">Canlı panelde aç</a>` : "";
     openModal("YEREL ÇALIŞMA", name, `<div class="modal-grid">${moduleContent[name] || `<p class="modal-note">Bu modül henüz yerel kayda sahip değil.</p>`}${liveButton}</div>`);
   }
 
   function openNotifications() {
-    storage.set("clinicnova.notificationsRead", true);
+    if (!previewMode) storage.set("clinicnova.notificationsRead", true);
     $("#notificationDot").hidden = true;
     openModal("BİLDİRİMLER", "Bugün sizden beklenenler", `<div class="list-stack">
       <button class="patient-card action-card" data-module="Stok"><span class="transaction-icon expense">!</span><span class="patient-copy"><strong>Stok seviyesi kritik</strong><small>Anestezi kartuşu minimum seviyenin altında.</small></span><svg><use href="#i-chevron"/></svg></button>
@@ -1241,6 +1259,7 @@
     }
     if (target.dataset.financeFilter) { state.transactionFilter = target.dataset.financeFilter; renderFinance(); return; }
     if (target.dataset.consentFilter) { state.consentFilter = target.dataset.consentFilter; renderConsents(); return; }
+    if (target.dataset.payBalance) return openBalancePayment(target.dataset.payBalance);
     if (target.dataset.financeTransaction) return openFinanceDetail(target.dataset.financeTransaction);
     if (target.dataset.consent) return openConsentDetail(target.dataset.consent);
     if (target.dataset.editConsentStatus) return openConsentStatusEditor(target.dataset.editConsentStatus);
@@ -1443,7 +1462,7 @@
       trashItems = [];
       state.transactionFilter = "ALL";
       state.consentFilter = "ALL";
-      storage.set("clinicnova.notificationsRead", false);
+      if (!previewMode) storage.set("clinicnova.notificationsRead", false);
       $("#notificationDot").hidden = false;
       saveData(); renderAll(); closeModal(); showToast("Demo verileri sıfırlandı."); return;
     }
@@ -1516,6 +1535,24 @@
   });
 
   document.addEventListener("submit", async (event) => {
+    if (event.target.id === "balancePaymentForm") {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const item = state.transactions.find((entry) => Number(entry.id) === Number(form.get("transactionId")));
+      const amount = Number(form.get("amount"));
+      const remaining = item ? outstandingAmount(item) : 0;
+      if (!item || item.type === "expense" || !Number.isFinite(amount) || amount <= 0 || amount > remaining) return showToast("Tahsilat tutarını kalan bakiyeyi aşmayacak şekilde girin.");
+      const method = String(form.get("method") || "Belirtilmedi");
+      const note = String(form.get("note") || "Taksit tahsilatı").trim();
+      item.amount = Number(item.amount || 0) + amount;
+      item.remainingAmount = Math.max(0, Number(item.totalAmount || item.amount) - item.amount);
+      item.paidInstallments = Math.min(Number(item.installmentCount || 1), Number(item.paidInstallments || 0) + 1);
+      item.status = item.remainingAmount > 0 ? "PENDING" : "PAID";
+      item.paymentHistory = Array.isArray(item.paymentHistory) ? item.paymentHistory : [];
+      item.paymentHistory.unshift({ id: Date.now(), amount, method, note, date: "Şimdi" });
+      queueUpdate("PAYMENT", item.id, paymentPayload(item));
+      saveData(); renderAll(); openFinanceDetail(item.id); showToast(item.remainingAmount > 0 ? `${currency(amount)} tahsil edildi · ${currency(item.remainingAmount)} kaldı.` : "Ödeme planı tamamen tahsil edildi."); return;
+    }
     if (event.target.id === "doctorForm") {
       event.preventDefault();
       const form = new FormData(event.target);

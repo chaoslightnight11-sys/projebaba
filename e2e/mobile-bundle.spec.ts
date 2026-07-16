@@ -301,6 +301,13 @@ test("production Android can be reviewed without a password and keeps sample dat
   await expect(page.getByText("Kesilen toplam", { exact: true })).toBeVisible();
   await expect(page.getByText("Toplam gider", { exact: true })).toBeVisible();
   await expect(page.locator("#pendingPaymentList").getByText("Ayşe Yılmaz", { exact: true })).toBeVisible();
+  await page.locator("#pendingPaymentList").getByRole("button").filter({ hasText: "Ayşe Yılmaz" }).click();
+  await page.getByRole("button", { name: "Bu plana tahsilat işle" }).click();
+  await page.locator('#balancePaymentForm input[name="amount"]').fill("1000");
+  await page.getByRole("button", { name: "Tahsilatı kaydet" }).click();
+  await expect(page.locator("#modalBody")).toContainText("Tahsilat geçmişi");
+  await expect(page.locator("#modalBody")).toContainText("₺1.000");
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
   await page.getByRole("button", { name: "Gider ekle" }).click();
   await page.locator('#expenseForm input[name="name"]').fill("Test Laboratuvarı");
   await page.locator('#expenseForm select[name="category"]').selectOption("Laboratuvar");
