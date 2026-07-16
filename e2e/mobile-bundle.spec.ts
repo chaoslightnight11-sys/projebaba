@@ -194,8 +194,7 @@ test("bundled Android interface works offline", async ({ page }) => {
   const moduleCases: Array<[string, string, string | null]> = [
     ["Sağlık turizmi", "John Smith", "John Smith lead kaydını sil"],
     ["İletişim", "Demo taslak", "Emily Carter iletişim kaydını sil"],
-    ["Raporlar", "Net akış", null],
-    ["Dijital onam", "İmza bekliyor", "Emily Carter onam kaydını sil"]
+    ["Raporlar", "Net akış", null]
   ];
   for (const [module, expected, deleteName] of moduleCases) {
     await page.getByRole("button", { name: new RegExp(`^${module}`) }).click();
@@ -288,6 +287,32 @@ test("production Android can be reviewed without a password and keeps sample dat
   await page.getByRole("button", { name: "Sürümü incele" }).click();
   await expect(page.getByRole("heading", { name: "Sürüm incelemeye hazır 👋" })).toBeVisible();
   await expect(page.getByText("İnceleme modu", { exact: true })).toBeVisible();
+  await page.locator(".bottom-nav").getByRole("button", { name: "Finans", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tahsilat merkezi" })).toBeVisible();
+  await expect(page.getByText("Kesilen toplam", { exact: true })).toBeVisible();
+  await expect(page.getByText("Toplam gider", { exact: true })).toBeVisible();
+  await expect(page.locator("#pendingPaymentList").getByText("Ayşe Yılmaz", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Gider ekle" }).click();
+  await page.locator('#expenseForm input[name="name"]').fill("Test Laboratuvarı");
+  await page.locator('#expenseForm select[name="category"]').selectOption("Laboratuvar");
+  await page.locator('#expenseForm input[name="amount"]').fill("1250");
+  await page.getByRole("button", { name: "Gideri kaydet" }).click();
+  await expect(page.locator("#transactionList").getByText("Test Laboratuvarı", { exact: true })).toBeVisible();
+  await page.locator(".bottom-nav").getByRole("button", { name: "Onam", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Onam merkezi" })).toBeVisible();
+  await expect(page.getByText("Hasta belgeleri", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Yeni onam oluştur" }).click();
+  await page.locator('#consentForm select[name="patientId"]').selectOption({ label: "Ayşe Yılmaz" });
+  await page.locator('#consentForm select[name="form"]').selectOption("Cerrahi işlem onamı");
+  await page.locator('#consentForm select[name="status"]').selectOption("İmza bekliyor");
+  await page.getByRole("button", { name: "Onamı kaydet" }).click();
+  const consent = page.locator("#consentList").getByRole("button", { name: /Cerrahi işlem onamı/ });
+  await expect(consent).toBeVisible();
+  await consent.click();
+  await expect(page.getByRole("heading", { name: "Ayşe Yılmaz" })).toBeVisible();
+  await page.getByRole("button", { name: "Klinikte imzalandı olarak işaretle" }).click();
+  await expect(page.locator("#modalBody")).toContainText("İmzalandı");
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
   await page.getByRole("button", { name: "Hastalar", exact: true }).click();
   await expect(page.locator("#patientList").getByText("Ayşe Yılmaz", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Hasta ekle" }).click();

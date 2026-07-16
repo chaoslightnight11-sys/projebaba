@@ -136,8 +136,21 @@
           <div class="page-heading"><div><span class="eyebrow">FİNANS</span><h1>Tahsilat merkezi</h1><p id="financePeriod" class="muted"></p></div><button class="icon-button" type="button" data-action="finance-report" aria-label="Finans raporu"><svg><use href="#i-chart"/></svg></button></div>
           <div class="finance-hero"><span>Bu ay tahsil edilen</span><strong id="monthlyRevenue"></strong><div class="finance-progress"><span style="width:72%"></span></div><small>Hedefin %72’si · 11 gün kaldı</small></div>
           <div id="financeStats" class="finance-stats"></div>
+          <div class="stock-actions"><button class="button button-primary" data-action="add-payment">Tahsilat ekle</button><button class="button button-secondary" data-action="add-expense">Gider ekle</button></div>
+          <div id="financeFilterChips" class="filter-chips finance-filter-chips"><button class="active" data-finance-filter="ALL">Tümü</button><button data-finance-filter="PAID">Ödenen</button><button data-finance-filter="PENDING">Bekleyen</button><button data-finance-filter="EXPENSE">Gider</button></div>
+          <div class="section-heading"><div><span class="eyebrow">ÖDEME PLANLARI</span><h2>Bekleyen bakiyeler</h2></div></div>
+          <div id="pendingPaymentList" class="list-stack"></div>
           <div class="section-heading"><div><span class="eyebrow">SON HAREKETLER</span><h2>İşlemler</h2></div><button id="transactionFilterButton" class="text-button" type="button" data-action="transaction-filter">Filtrele</button></div>
           <div id="transactionList" class="list-stack"></div>
+        </section>
+
+        <section id="view-consents" class="view" data-view="consents">
+          <div class="page-heading"><div><span class="eyebrow">DİJİTAL ONAM</span><h1>Onam merkezi</h1><p class="muted">Hasta onamları, imza durumu ve takip</p></div><button class="button button-primary button-square" data-action="add-consent" aria-label="Onam oluştur"><svg><use href="#i-plus"/></svg></button></div>
+          <div id="consentStats" class="finance-stats"></div>
+          <button class="button button-primary full-action" data-action="add-consent">Yeni onam oluştur</button>
+          <div id="consentFilterChips" class="filter-chips"><button class="active" data-consent-filter="ALL">Tümü</button><button data-consent-filter="İmza bekliyor">Bekleyen</button><button data-consent-filter="İmzalandı">İmzalı</button><button data-consent-filter="Taslak">Taslak</button></div>
+          <div class="section-heading"><div><span class="eyebrow">ONAM KAYITLARI</span><h2>Hasta belgeleri</h2></div></div>
+          <div id="consentList" class="list-stack page-list"></div>
         </section>
 
         <section id="view-more" class="view" data-view="more">
@@ -159,6 +172,8 @@
         <button data-go="appointments"><svg><use href="#i-calendar"/></svg><span>Randevu</span></button>
         <button data-go="treatment-plans"><svg><use href="#i-tooth"/></svg><span>Tedaviler</span></button>
         <button data-go="stocks"><svg><use href="#i-box"/></svg><span>Stok</span></button>
+        <button data-go="finance"><svg><use href="#i-wallet"/></svg><span>Finans</span></button>
+        <button data-go="consents"><svg><use href="#i-shield"/></svg><span>Onam</span></button>
         <button data-go="more"><svg><use href="#i-grid"/></svg><span>Diğer</span></button>
       </nav>
     </div>

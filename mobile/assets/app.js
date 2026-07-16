@@ -86,9 +86,10 @@
     { id: 3, patient: "Emily Carter", channel: "E-posta", message: "Your treatment package is ready for review.", status: "Demo taslak" }
   ];
   const defaultConsentRecords = [
-    { id: 1, patient: "Ayşe Yılmaz", form: "İmplant aydınlatılmış onamı", status: "İmzalandı", date: "Bugün, 09:12" },
-    { id: 2, patient: "Mehmet Demir", form: "Kanal tedavisi onamı", status: "İmzalandı", date: "Dün, 15:40" },
-    { id: 3, patient: "Emily Carter", form: "International treatment consent", status: "İmza bekliyor", date: "10 Temmuz" }
+    { id: 1, patientId: 1, patient: "Ayşe Yılmaz", form: "İmplant aydınlatılmış onamı", treatment: "İmplant", language: "Türkçe", channel: "Tablet", status: "İmzalandı", date: "Bugün, 09:12", signedAt: "Bugün, 09:12", signer: "Ayşe Yılmaz", version: "v2", note: "Cerrahi işlem öncesi klinikte imzalandı." },
+    { id: 2, patientId: 2, patient: "Mehmet Demir", form: "Kanal tedavisi onamı", treatment: "Kanal tedavisi", language: "Türkçe", channel: "SMS bağlantısı", status: "İmzalandı", date: "Dün, 15:40", signedAt: "Dün, 15:40", signer: "Mehmet Demir", version: "v1", note: "İkinci seans öncesi onaylandı." },
+    { id: 3, patientId: null, patient: "Emily Carter", form: "International treatment consent", treatment: "Health Tourism", language: "English", channel: "E-posta bağlantısı", status: "İmza bekliyor", date: "10 Temmuz", signedAt: "", signer: "", version: "v1", note: "Treatment package and travel timing shared." },
+    { id: 4, patientId: 5, patient: "Zeynep Çelik", form: "Kişisel veri ve görüntü kullanım onamı", treatment: "Genel", language: "Türkçe", channel: "Klinikte", status: "Taslak", date: "Bugün", signedAt: "", signer: "", version: "v1", note: "Hasta kontrol randevusunda inceleyecek." }
   ];
   const modules = [
     { name: "Finans", detail: "Tahsilat, peşinat ve giderler", icon: "i-wallet", color: "#16845b" },
@@ -128,6 +129,7 @@
     patientFilter: "ALL",
     patientQuery: "",
     transactionFilter: "ALL",
+    consentFilter: "ALL",
     appointmentMonth: new Date(today.getFullYear(), today.getMonth(), 1),
     activeView: "home"
   };
@@ -481,6 +483,8 @@
 
   function renderFinance() {
     const income = state.transactions.filter((item) => item.type === "income" && item.status === "PAID").reduce((sum, item) => sum + item.amount, 0);
+    const collected = state.transactions.filter((item) => item.type === "income").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const billed = state.transactions.filter((item) => item.type === "income").reduce((sum, item) => sum + Number(item.totalAmount || item.amount || 0), 0);
     const expense = state.transactions.filter((item) => item.type === "expense" && item.status === "PAID").reduce((sum, item) => sum + item.amount, 0);
     const pending = state.transactions.filter((item) => item.type === "income" && outstandingAmount(item) > 0);
     const visibleTransactions = state.transactions.filter((item) => {
@@ -489,18 +493,35 @@
       return item.status === state.transactionFilter;
     });
     $("#financePeriod").textContent = new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(today);
-    $("#monthlyRevenue").textContent = currency(income);
+    $("#monthlyRevenue").textContent = currency(collected);
     $("#financeStats").innerHTML = [
+      ["Kesilen toplam", currency(billed), `${state.transactions.filter((item) => item.type === "income").length} gelir kaydı`],
       ["Bekleyen tahsilat", currency(pending.reduce((sum, item) => sum + outstandingAmount(item), 0)), `${pending.length} ödeme planı`],
-      ["Net nakit akışı", currency(income - expense), "+%11 geçen aya göre"]
+      ["Toplam gider", currency(expense), `${state.transactions.filter((item) => item.type === "expense").length} gider kaydı`],
+      ["Net nakit akışı", currency(collected - expense), "Tahsilat − gider"]
     ].map(([label, value, detail]) => `<article class="finance-stat"><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`).join("");
+    $$("#financeFilterChips button").forEach((button) => button.classList.toggle("active", button.dataset.financeFilter === state.transactionFilter));
     $("#transactionFilterButton").textContent = ({ ALL: "Filtrele", PAID: "Ödenenler", PENDING: "Gecikenler", EXPENSE: "Giderler" })[state.transactionFilter];
-    $("#transactionList").innerHTML = visibleTransactions.length ? visibleTransactions.map((item) => `<article class="transaction-card transaction-card-deletable">
+    $("#pendingPaymentList").innerHTML = pending.length ? pending.map((item) => `<button class="offline-record clickable-record" data-finance-transaction="${item.id}"><span class="transaction-icon pending">!</span><span class="patient-copy"><strong>${escapeHtml(item.name)}</strong><small>${item.paidInstallments || 0}/${item.installmentCount || 1} taksit · ${escapeHtml(item.detail)}</small><span class="record-progress"><i style="width:${Math.min(100, Math.round(Number(item.amount || 0) / Number(item.totalAmount || item.amount || 1) * 100))}%"></i></span></span><span class="record-value critical">${currency(outstandingAmount(item))}<small>kalan</small></span></button>`).join("") : `<div class="empty-state"><strong>Bekleyen bakiye yok</strong><br/>Tüm tahsilatlar tamamlanmış görünüyor.</div>`;
+    $("#transactionList").innerHTML = visibleTransactions.length ? visibleTransactions.map((item) => `<article class="transaction-card transaction-card-deletable"><button class="transaction-main" data-finance-transaction="${item.id}" aria-label="${escapeHtml(item.name)} finans ayrıntısı">
       <span class="transaction-icon ${item.type === "expense" ? "expense" : item.status === "PENDING" ? "pending" : ""}">${item.type === "expense" ? "−" : item.status === "PENDING" ? "!" : "+"}</span>
       <span class="transaction-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)} · ${escapeHtml(item.date)}${item.isDeposit ? " · Peşinat" : ""}</small>${item.components?.length ? `<span class="transaction-lines">${item.components.map((line) => `${escapeHtml(line.name)} ${currency(line.amount)}`).join(" · ")}</span>` : ""}${outstandingAmount(item) > 0 ? `<span class="installment-note">${item.paidInstallments || 0}/${item.installmentCount || 1} taksit ödendi · Kalan ${currency(outstandingAmount(item))}</span>` : ""}</span>
       <span class="transaction-amount ${item.type === "expense" ? "expense" : outstandingAmount(item) > 0 ? "pending" : ""}">${item.type === "expense" ? "−" : "+"}${currency(item.amount)}<small>${item.type === "expense" ? "Gider" : outstandingAmount(item) > 0 ? "Kısmi ödendi" : "Ödendi"}</small></span>
+      </button>
       <button class="delete-button" data-delete-transaction="${item.id}" aria-label="${escapeHtml(item.name)} finans kaydını sil">Sil</button>
     </article>`).join("") : `<div class="empty-state"><strong>İşlem bulunamadı</strong><br/>Filtreyi değiştirerek diğer hareketleri görüntüleyin.</div>`;
+  }
+
+  function renderConsents() {
+    const signed = consentRecords.filter((item) => item.status === "İmzalandı").length;
+    const pending = consentRecords.filter((item) => item.status === "İmza bekliyor").length;
+    const drafts = consentRecords.filter((item) => item.status === "Taslak").length;
+    const visible = consentRecords.filter((item) => state.consentFilter === "ALL" || item.status === state.consentFilter);
+    $("#consentStats").innerHTML = [
+      ["İmzalı", signed, "Tamamlanan onam"], ["Bekleyen", pending, "Hasta aksiyonu"], ["Taslak", drafts, "Gönderilmeyi bekliyor"], ["Toplam", consentRecords.length, "Onam kaydı"]
+    ].map(([label, value, detail]) => `<article class="finance-stat"><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`).join("");
+    $$("#consentFilterChips button").forEach((button) => button.classList.toggle("active", button.dataset.consentFilter === state.consentFilter));
+    $("#consentList").innerHTML = visible.length ? visible.map((item) => `<article class="offline-record record-deletable"><button class="consent-main" data-consent="${item.id}"><span class="transaction-icon ${item.status === "İmzalandı" ? "" : item.status === "Taslak" ? "expense" : "pending"}">${item.status === "İmzalandı" ? "✓" : item.status === "Taslak" ? "…" : "!"}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.form)} · ${escapeHtml(item.language || "Türkçe")}</small><span class="installment-note">${escapeHtml(item.channel || "Klinikte")} · ${escapeHtml(item.date)}</span></span><span class="record-state">${escapeHtml(item.status)}</span></button><button class="delete-button" data-delete-record="${item.id}" data-record-kind="consentRecords" aria-label="${escapeHtml(item.patient)} onam kaydını sil">Sil</button></article>`).join("") : `<div class="empty-state"><strong>Onam bulunamadı</strong><br/>Filtreyi değiştirin veya yeni bir onam oluşturun.</div>`;
   }
 
   function renderModules() {
@@ -512,6 +533,7 @@
     renderPatients();
     renderAppointments();
     renderFinance();
+    renderConsents();
     renderTreatmentPlans();
     renderStocks();
     renderModules();
@@ -530,6 +552,7 @@
     if (view === "patients") renderPatients();
     if (view === "appointments") renderAppointments();
     if (view === "finance") renderFinance();
+    if (view === "consents") renderConsents();
     if (view === "treatment-plans") renderTreatmentPlans();
     if (view === "stocks") renderStocks();
   }
@@ -602,6 +625,53 @@
       <p class="modal-note">Tahsilat hemen cihazda saklanır; sunucu bağlandığında merkezi finans paneline eşitlenir.</p>
       <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Ödemeyi kaydet</button></div>
     </form>`);
+  }
+
+  function openAddExpense() {
+    openModal("FİNANS", "Gider ekle", `<form id="expenseForm" class="modal-grid">
+      <div class="modal-grid two"><label class="field">Gider başlığı<input name="name" required placeholder="Örn. Dental depo" /></label><label class="field">Kategori<select name="category"><option>Sarf malzeme</option><option>Laboratuvar</option><option>Kira</option><option>Personel</option><option>Reklam</option><option>Vergi</option><option>Diğer</option></select></label></div>
+      <div class="modal-grid two"><label class="field">Tutar<input name="amount" type="number" min="0.01" step="0.01" required /></label><label class="field">Ödeme yöntemi<select name="method"><option>Kart</option><option>Nakit</option><option>Transfer</option><option>Otomatik ödeme</option></select></label></div>
+      <label class="field">Açıklama<input name="description" placeholder="Fatura veya gider açıklaması" /></label>
+      <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Gideri kaydet</button></div>
+    </form>`);
+  }
+
+  function openAddConsent() {
+    if (!state.patients.length) return showToast("Önce bir hasta ekleyin.");
+    const options = state.patients.map((patient) => `<option value="${patient.id}">${escapeHtml(patient.name)}</option>`).join("");
+    openModal("DİJİTAL ONAM", "Yeni onam oluştur", `<form id="consentForm" class="modal-grid">
+      <label class="field">Hasta<select name="patientId" required>${options}</select></label>
+      <div class="modal-grid two"><label class="field">Onam türü<select name="form"><option>İmplant aydınlatılmış onamı</option><option>Kanal tedavisi onamı</option><option>Cerrahi işlem onamı</option><option>Ortodonti onamı</option><option>Kişisel veri ve görüntü kullanım onamı</option><option>Genel tedavi onamı</option></select></label><label class="field">Tedavi<input name="treatment" value="Genel tedavi" required /></label></div>
+      <div class="modal-grid two"><label class="field">Dil<select name="language"><option>Türkçe</option><option>English</option><option>Deutsch</option><option>العربية</option></select></label><label class="field">İmza yöntemi<select name="channel"><option>Klinikte tablet</option><option>SMS bağlantısı</option><option>E-posta bağlantısı</option><option>Basılı belge</option></select></label></div>
+      <label class="field">Durum<select name="status"><option>Taslak</option><option>İmza bekliyor</option><option>İmzalandı</option></select></label>
+      <label class="field">Not<textarea name="note" placeholder="Hasta bilgilendirme, tercüman veya özel koşul notu"></textarea></label>
+      <p class="modal-note">Çevrimdışı kayıtta taslak ve klinikte alınan imza durumu saklanır. Uzak imza bağlantısı ve yasal zaman damgası için yetkili ClinicNova sunucusu gerekir.</p>
+      <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Onamı kaydet</button></div>
+    </form>`);
+  }
+
+  function openFinanceDetail(id) {
+    const item = state.transactions.find((entry) => Number(entry.id) === Number(id));
+    if (!item) return;
+    const remaining = outstandingAmount(item);
+    openModal(item.type === "expense" ? "GİDER DETAYI" : "TAHSİLAT DETAYI", item.name, `<div class="modal-grid">
+      <div class="finance-stats"><article class="finance-stat"><span>${item.type === "expense" ? "Gider" : "Tahsil edilen"}</span><strong>${currency(item.amount)}</strong><small>${escapeHtml(item.date)}</small></article><article class="finance-stat"><span>${item.type === "expense" ? "Kategori" : "Kalan bakiye"}</span><strong>${item.type === "expense" ? escapeHtml(item.category || "Diğer") : currency(remaining)}</strong><small>${item.type === "expense" ? escapeHtml(item.method || "Belirtilmedi") : `${item.paidInstallments || 0}/${item.installmentCount || 1} taksit`}</small></article></div>
+      <p class="modal-note"><strong>${escapeHtml(item.detail)}</strong>${item.isDeposit ? "<br/>Peşinat olarak işlendi." : ""}</p>
+      ${item.components?.length ? `<section class="patient-section"><div class="patient-section-title"><strong>İşlem kalemleri</strong><span>${item.components.length}</span></div><div class="history-list">${item.components.map((line) => `<article><i>₺</i><span><strong>${escapeHtml(line.name)}</strong><small>${currency(line.amount)}</small></span></article>`).join("")}</div></section>` : ""}
+      ${remaining > 0 ? `<div class="finance-progress"><span style="width:${Math.min(100, Math.round(Number(item.amount || 0) / Number(item.totalAmount || item.amount || 1) * 100))}%"></span></div><button class="button button-primary" data-action="add-payment" data-patient-prefill="${item.patientId || ""}">Yeni tahsilat ekle</button>` : ""}
+    </div>`);
+  }
+
+  function openConsentDetail(id) {
+    const item = consentRecords.find((entry) => Number(entry.id) === Number(id));
+    if (!item) return;
+    openModal("ONAM DETAYI", item.patient, `<div class="modal-grid">
+      <div class="finance-stats"><article class="finance-stat"><span>Durum</span><strong>${escapeHtml(item.status)}</strong><small>${escapeHtml(item.date)}</small></article><article class="finance-stat"><span>Belge sürümü</span><strong>${escapeHtml(item.version || "v1")}</strong><small>${escapeHtml(item.language || "Türkçe")}</small></article></div>
+      <p class="modal-note"><strong>${escapeHtml(item.form)}</strong><br/>Tedavi: ${escapeHtml(item.treatment || "Genel")}<br/>İmza yöntemi: ${escapeHtml(item.channel || "Klinikte")}</p>
+      <p class="modal-note"><strong>İmza bilgisi</strong><br/>${item.status === "İmzalandı" ? `${escapeHtml(item.signer || item.patient)} · ${escapeHtml(item.signedAt || item.date)}` : "Hasta imzası henüz tamamlanmadı."}</p>
+      <p class="modal-note"><strong>Klinik notu</strong><br/>${escapeHtml(item.note || "Not eklenmemiş.")}</p>
+      ${item.status !== "İmzalandı" ? `<button class="button button-primary" data-sign-consent="${item.id}">Klinikte imzalandı olarak işaretle</button>` : ""}
+    </div>`);
   }
 
   function openAddStockItem() {
@@ -816,6 +886,7 @@
 
   function openModule(name) {
     if (name === "Finans") return navigate("finance");
+    if (name === "Dijital onam") return navigate("consents");
     const paidIncome = state.transactions.filter((item) => item.type === "income" && item.status === "PAID").reduce((sum, item) => sum + item.amount, 0);
     const expenses = state.transactions.filter((item) => item.type === "expense" && item.status === "PAID").reduce((sum, item) => sum + item.amount, 0);
     const pendingTotal = state.transactions.filter((item) => item.type === "income").reduce((sum, item) => sum + outstandingAmount(item), 0);
@@ -891,6 +962,7 @@
     state.patientFilter = "ALL";
     state.patientQuery = "";
     state.transactionFilter = "ALL";
+    state.consentFilter = "ALL";
     state.appointmentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     state.activeView = "home";
     hotLeads = JSON.parse(JSON.stringify(defaultHotLeads));
@@ -1149,6 +1221,16 @@
       state.appointmentMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
       renderAppointments(); return;
     }
+    if (target.dataset.financeFilter) { state.transactionFilter = target.dataset.financeFilter; renderFinance(); return; }
+    if (target.dataset.consentFilter) { state.consentFilter = target.dataset.consentFilter; renderConsents(); return; }
+    if (target.dataset.financeTransaction) return openFinanceDetail(target.dataset.financeTransaction);
+    if (target.dataset.consent) return openConsentDetail(target.dataset.consent);
+    if (target.dataset.signConsent) {
+      const consent = consentRecords.find((item) => Number(item.id) === Number(target.dataset.signConsent));
+      if (!consent) return;
+      consent.status = "İmzalandı"; consent.signer = consent.patient; consent.signedAt = "Şimdi"; consent.date = "Şimdi";
+      saveData(); renderConsents(); openConsentDetail(consent.id); showToast("Onam imzalandı olarak kaydedildi."); return;
+    }
     if (target.dataset.filter) { state.patientFilter = target.dataset.filter; $$("#patientFilters button").forEach((button) => button.classList.toggle("active", button === target)); renderPatients(); return; }
     if (target.dataset.restoreTrash) {
       const trashId = Number(target.dataset.restoreTrash);
@@ -1203,6 +1285,7 @@
       const originalOpener = modalOpener;
       saveData();
       if (kind === "hotLeads") renderDashboard();
+      if (kind === "consentRecords" && state.activeView === "consents") { renderConsents(); showToast("Onam kaydı silindi."); return; }
       openModule(moduleByKind[kind]); modalOpener = originalOpener; showToast("Kayıt silindi."); return;
     }
       if (target.dataset.deletePatient) {
@@ -1326,6 +1409,7 @@
       consentRecords = JSON.parse(JSON.stringify(defaultConsentRecords));
       trashItems = [];
       state.transactionFilter = "ALL";
+      state.consentFilter = "ALL";
       storage.set("clinicnova.notificationsRead", false);
       $("#notificationDot").hidden = false;
       saveData(); renderAll(); closeModal(); showToast("Demo verileri sıfırlandı."); return;
@@ -1334,6 +1418,8 @@
     if (action === "add-patient") { closeModal(); return openAddPatient(); }
     if (action === "add-appointment") { closeModal(); return openAddAppointment(target.dataset.patientPrefill); }
     if (action === "add-payment") { closeModal(); return openAddPayment(target.dataset.patientPrefill); }
+    if (action === "add-expense") { closeModal(); return openAddExpense(); }
+    if (action === "add-consent") { closeModal(); return openAddConsent(); }
     if (action === "add-stock-item") { closeModal(); return openAddStockItem(); }
     if (action === "add-treatment-plan") { closeModal(); return openAddTreatmentPlan(); }
     if (action === "stock-movement") { closeModal(); return openStockMovement(target.dataset.stockPrefill); }
@@ -1490,6 +1576,29 @@
       queueCreate("PAYMENT", payment.id, paymentPayload(payment));
       state.transactionFilter = "ALL";
       saveData(); renderAll(); closeModal(); navigate("finance"); showToast(remainingAmount > 0 ? `Ödeme kaydedildi · ${currency(remainingAmount)} bakiye kaldı.` : "Ödeme tamamen tahsil edildi.");
+    }
+    if (event.target.id === "expenseForm") {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const amount = Number(form.get("amount"));
+      const name = String(form.get("name") || "").trim();
+      if (name.length < 2 || !Number.isFinite(amount) || amount <= 0) return showToast("Gider başlığı ve tutarı kontrol edin.");
+      const category = String(form.get("category") || "Diğer");
+      const method = String(form.get("method") || "Belirtilmedi");
+      const description = String(form.get("description") || "").trim();
+      const expense = { id: Date.now(), patientId: null, name, category, method, detail: `${category} · ${method}${description ? ` · ${description}` : ""}`, amount, type: "expense", status: "PAID", date: "Şimdi" };
+      state.transactions.unshift(expense); state.transactionFilter = "ALL";
+      saveData(); renderAll(); closeModal(); navigate("finance"); showToast("Gider finans kaydına eklendi.");
+    }
+    if (event.target.id === "consentForm") {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const patient = patientById(form.get("patientId"));
+      if (!patient) return showToast("Hasta seçimini kontrol edin.");
+      const status = String(form.get("status") || "Taslak");
+      const consent = { id: Date.now(), patientId: patient.id, patient: patient.name, form: String(form.get("form") || "Genel tedavi onamı"), treatment: String(form.get("treatment") || "Genel tedavi").trim(), language: String(form.get("language") || "Türkçe"), channel: String(form.get("channel") || "Klinikte"), status, date: "Şimdi", signedAt: status === "İmzalandı" ? "Şimdi" : "", signer: status === "İmzalandı" ? patient.name : "", version: "v1", note: String(form.get("note") || "").trim() };
+      consentRecords.unshift(consent); state.consentFilter = "ALL";
+      saveData(); renderAll(); closeModal(); navigate("consents"); showToast(status === "İmzalandı" ? "İmzalı onam kaydedildi." : "Onam kaydı oluşturuldu.");
     }
     if (event.target.id === "stockItemForm") {
       event.preventDefault();
