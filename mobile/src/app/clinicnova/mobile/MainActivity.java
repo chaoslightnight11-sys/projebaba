@@ -145,6 +145,14 @@ public class MainActivity extends Activity {
                     return true;
                 }
                 if ("https".equalsIgnoreCase(scheme)) {
+                    if (view.getUrl() != null && view.getUrl().startsWith("file:///android_asset/")) {
+                        try {
+                            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                        } catch (ActivityNotFoundException ignored) {
+                            Toast.makeText(MainActivity.this, "Satın alma sayfası açılamadı.", Toast.LENGTH_SHORT).show();
+                        }
+                        return true;
+                    }
                     return false;
                 }
                 if ("file".equalsIgnoreCase(scheme) && uri.toString().startsWith("file:///android_asset/")) return false;
@@ -216,12 +224,12 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void productSearch(String serverUrl, String query, String itemId) {
-            new Thread(() -> performProductSearch(serverUrl, query, itemId)).start();
+        public void productSearch(String serverUrl, String productUrl, String itemId) {
+            new Thread(() -> performProductSearch(serverUrl, productUrl, itemId)).start();
         }
     }
 
-    private void performProductSearch(String serverUrl, String query, String itemId) {
+    private void performProductSearch(String serverUrl, String productUrl, String itemId) {
         HttpURLConnection connection = null;
         int status = 0;
         String responseBody = "";
@@ -230,8 +238,9 @@ public class MainActivity extends Activity {
             if (!"https".equalsIgnoreCase(base.getProtocol()) || base.getHost() == null || base.getHost().isEmpty()) {
                 throw new IllegalArgumentException("HTTPS sunucu adresi gerekli.");
             }
-            String normalizedQuery = query == null ? "" : query.trim();
-            if (normalizedQuery.length() < 2 || normalizedQuery.length() > 200) throw new IllegalArgumentException("Ürün adı geçersiz.");
+            String normalizedProductUrl = productUrl == null ? "" : productUrl.trim();
+            URL pageUrl = new URL(normalizedProductUrl);
+            if (!"https".equalsIgnoreCase(pageUrl.getProtocol()) || pageUrl.getHost() == null || pageUrl.getHost().isEmpty()) throw new IllegalArgumentException("HTTPS satın alma sayfası gerekli.");
             URL endpoint = new URL(base.getProtocol(), base.getHost(), base.getPort(), "/api/mobile/product-search");
             connection = (HttpURLConnection) endpoint.openConnection();
             connection.setRequestMethod("POST");
@@ -243,7 +252,7 @@ public class MainActivity extends Activity {
             connection.setRequestProperty("User-Agent", "ClinicNovaAndroid/" + appVersion());
             String cookies = CookieManager.getInstance().getCookie(serverUrl);
             if (cookies != null && !cookies.isEmpty()) connection.setRequestProperty("Cookie", cookies);
-            byte[] body = new JSONObject().put("query", normalizedQuery).toString().getBytes(StandardCharsets.UTF_8);
+            byte[] body = new JSONObject().put("productUrl", normalizedProductUrl).toString().getBytes(StandardCharsets.UTF_8);
             try (OutputStream output = connection.getOutputStream()) { output.write(body); }
             status = connection.getResponseCode();
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();

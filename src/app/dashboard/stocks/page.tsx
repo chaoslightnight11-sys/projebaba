@@ -12,10 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { requireModuleAccess } from "@/lib/auth";
 import { statusLabel } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
-import { createStockItem, createStockMovement, createStockOffer, createStockRecipe, deleteStockRecipe, getStockRecipes, getStocks } from "@/lib/services/stockService";
+import { takeRateLimit } from "@/lib/rate-limit";
+import { createStockItem, createStockMovement, createStockRecipe, deleteStockRecipe, getStockRecipes, getStocks } from "@/lib/services/stockService";
 import { getWritableBranchId } from "@/lib/services/tenantService";
 import { refreshProductOffers } from "@/lib/services/productSearchService";
-import { stockItemSchema, stockMovementSchema, stockOfferSchema, stockRecipeSchema } from "@/lib/validations/stock";
+import { stockItemSchema, stockMovementSchema, stockRecipeSchema } from "@/lib/validations/stock";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 function resultUrl(type: "success" | "error", message: string) {
@@ -46,24 +47,19 @@ async function createMovementAction(formData: FormData) {
   redirect(resultUrl("success", "Stok miktarı güncellendi."));
 }
 
-async function createOfferAction(formData: FormData) {
+async function refreshOffersAction(formData: FormData) {
   "use server";
   const session = await requireModuleAccess("stocks");
-  const branchId = await getWritableBranchId(session);
-  try { await createStockOffer(session.organizationId, branchId, stockOfferSchema.parse(Object.fromEntries(formData))); }
+  let seller = "";
+  try {
+    const rateLimit = takeRateLimit({ key: `web-product-page:${session.userId}`, limit: 20, windowMs: 60 * 60 * 1000 });
+    if (!rateLimit.allowed) throw new Error("Saatlik fiyat okuma sınırına ulaşıldı.");
+    const result = await refreshProductOffers(session.organizationId, String(formData.get("itemId") || ""), String(formData.get("productUrl") || ""));
+    seller = result.seller;
+  }
   catch (error) { redirect(resultUrl("error", errorMessage(error))); }
   revalidatePath("/dashboard/stocks");
-  redirect(resultUrl("success", "Tedarikçi fiyatı kaydedildi."));
-}
-
-async function refreshOffersAction(itemId: string) {
-  "use server";
-  const session = await requireModuleAccess("stocks");
-  let count = 0;
-  try { count = await refreshProductOffers(session.organizationId, itemId); }
-  catch (error) { redirect(resultUrl("error", errorMessage(error))); }
-  revalidatePath("/dashboard/stocks");
-  redirect(resultUrl("success", `${count} canlı fiyat güncellendi.`));
+  redirect(resultUrl("success", `${seller} sayfasındaki canlı fiyat kaydedildi.`));
 }
 
 async function createRecipeAction(formData: FormData) {
@@ -154,19 +150,15 @@ export default async function StocksPage({ searchParams }: { searchParams: Promi
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><ShoppingCart className="h-5 w-5" />Ürün satın alma ve fiyat karşılaştırma</CardTitle></CardHeader>
         <CardContent className="space-y-5">
-          <form action={createOfferAction} className="grid gap-4 lg:grid-cols-6">
+          <form action={refreshOffersAction} className="grid gap-4 lg:grid-cols-[minmax(180px,1fr)_minmax(320px,3fr)_auto] lg:items-end">
             <div className="space-y-2"><Label>Ürün</Label><Select name="itemId" required><option value="">Seçin</option>{stocks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div>
-            <div className="space-y-2"><Label>Satıcı</Label><Input name="seller" required /></div>
-            <div className="space-y-2"><Label>Ürün fiyatı</Label><Input name="unitPrice" type="number" min="0.01" step="0.01" required /></div>
-            <div className="space-y-2"><Label>Kargo</Label><Input name="shippingPrice" type="number" min="0" step="0.01" defaultValue="0" /></div>
-            <div className="space-y-2 lg:col-span-2"><Label>Güvenli ürün adresi</Label><Input name="productUrl" type="url" placeholder="https://..." required /></div>
-            <label className="flex items-center gap-2 text-sm"><input name="inStock" type="checkbox" defaultChecked /> Satışta</label>
-            <Button className="w-fit lg:col-span-5" type="submit">Fiyatı Kaydet</Button>
+            <div className="space-y-2"><Label>Satın alma sayfası</Label><Input name="productUrl" type="url" placeholder="https://magaza.com/urun/..." required /><p className="text-xs text-muted-foreground">Mağazadaki ürün sayfasını yapıştırın; güncel fiyat otomatik okunur.</p></div>
+            <Button type="submit">Fiyatı Getir</Button>
           </form>
           <div className="space-y-4">
             {stocks.filter((item) => item.offers.length > 0).map((item) => (
               <div key={item.id} className="rounded-md border">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-4 py-3"><span className="font-medium">{item.name} — kargo dahil ucuzdan pahalıya</span><form action={refreshOffersAction.bind(null, item.id)}><Button type="submit" size="sm" variant="outline">Canlı fiyatları yenile</Button></form></div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-4 py-3"><span className="font-medium">{item.name} — satın alma sayfaları</span><span className="text-xs text-muted-foreground">Güncel fiyat için sayfayı yukarıdan yeniden ekleyin</span></div>
                 <Table><TableHeader><TableRow><TableHead>Satıcı</TableHead><TableHead>Ürün</TableHead><TableHead>Kargo</TableHead><TableHead>Toplam</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>{item.offers.map((offer) => {
                     const total = Number(offer.unitPrice) + Number(offer.shippingPrice);

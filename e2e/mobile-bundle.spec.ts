@@ -201,16 +201,7 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Reçeteyi kaydet" }).click();
   await expect(page.locator("#stockRecipeList")).toContainText("Kontrol");
   await page.locator("#stockList").getByRole("button", { name: /Maske/ }).click();
-  await page.getByRole("button", { name: "Elle fiyat ekle" }).click();
-  await page.locator('#stockOfferForm input[name="seller"]').fill("Medikal Market");
-  await page.locator('#stockOfferForm input[name="unitPrice"]').fill("100");
-  await page.locator('#stockOfferForm input[name="shippingPrice"]').fill("10");
-  await page.locator('#stockOfferForm input[name="productUrl"]').fill("https://example.com/maske");
-  await page.getByRole("button", { name: "Fiyatı kaydet" }).click();
-  await expect(page.getByText("Medikal Market", { exact: true })).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Medikal Market satın alma fiyatını sil" }).click();
-  await expect(page.getByText("Medikal Market", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Satın alma sayfası ekle" })).toBeVisible();
   await page.getByRole("button", { name: "Kapat", exact: true }).click();
 
   await page.locator(".bottom-nav").getByRole("button", { name: "Randevu", exact: true }).click();
@@ -427,11 +418,10 @@ test("local Android records queue once and acknowledge server synchronization", 
         (window as typeof window & { capturedSync?: unknown }).capturedSync = parsed;
         setTimeout(() => (window as typeof window & { ClinicNovaSyncResult?: (status: number, body: string) => void }).ClinicNovaSyncResult?.(200, JSON.stringify({ synced: parsed.operations.length, failed: 0, results: parsed.operations.map((item, index) => ({ operationId: item.operationId, status: "synced", serverEntityId: `server-${index}` })) })), 10);
       },
-      productSearch(_url, query, itemId) {
-        (window as typeof window & { capturedProductQuery?: string }).capturedProductQuery = query;
+      productSearch(_url, productUrl, itemId) {
+        (window as typeof window & { capturedProductUrl?: string }).capturedProductUrl = productUrl;
         setTimeout(() => (window as typeof window & { ClinicNovaProductSearchResult?: (status: number, body: string, itemId: string) => void }).ClinicNovaProductSearchResult?.(200, JSON.stringify({ checkedAt: "2026-07-16T18:00:00.000Z", offers: [
-          { seller: "Dental Pahalı", unitPrice: 150, shippingPrice: 20, productUrl: "https://shop.example/pahali", inStock: true },
-          { seller: "Dental Ucuz", unitPrice: 100, shippingPrice: 5, productUrl: "https://shop.example/ucuz", inStock: true }
+          { seller: "Dental Ucuz", unitPrice: 100, shippingPrice: 5, productUrl, inStock: true }
         ] }), itemId), 10);
       }
     };
@@ -464,8 +454,10 @@ test("local Android records queue once and acknowledge server synchronization", 
   await page.locator('#stockItemForm input[name="minimum"]').fill("5");
   await page.getByRole("button", { name: "Ürünü kaydet" }).click();
   await page.locator("#stockList").getByRole("button", { name: /Anestezi kartuşu/ }).click();
-  await page.getByRole("button", { name: "İnternetten fiyatları getir" }).click();
+  await page.getByRole("button", { name: "Satın alma sayfası ekle" }).click();
+  await page.locator('#stockOfferForm input[name="productUrl"]').fill("https://shop.example/anestezi-kartusu");
+  await page.getByRole("button", { name: "Fiyatı getir" }).click();
   await expect(page.getByText("Dental Ucuz", { exact: true })).toBeVisible();
   await expect(page.locator(".purchase-list .purchase-row").first()).toContainText("Dental Ucuz");
-  await expect.poll(() => page.evaluate(() => (window as typeof window & { capturedProductQuery?: string }).capturedProductQuery)).toBe("Anestezi kartuşu");
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { capturedProductUrl?: string }).capturedProductUrl)).toBe("https://shop.example/anestezi-kartusu");
 });

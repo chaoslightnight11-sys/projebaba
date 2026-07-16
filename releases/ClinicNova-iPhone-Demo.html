@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#f8fafc" />
     <meta name="color-scheme" content="light dark" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-OlvGKa6nuvDFyedRFaG0eDwzhRErgFyHw1up/JMNT6Y=' 'sha256-5Ruyzr4OHNl1NoxqZnFX4f3Gx43wx/eQZRLkw3cxi6Q='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self' https:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-OlvGKa6nuvDFyedRFaG0eDwzhRErgFyHw1up/JMNT6Y=' 'sha256-FXb4q7nhdtsGIdRDKvzVHxE+0MfgZHbfgyaSYf61CLs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self' https:" />
     <title>ClinicNova</title>
     <style>:root {
   color-scheme: light;
@@ -1402,9 +1402,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     openModal("STOK DETAYI", item.name, `<div class="modal-grid">
       <div class="finance-stats"><article class="finance-stat"><span>Mevcut</span><strong>${item.amount} ${escapeHtml(item.unit)}</strong><small>Minimum ${item.minimum}</small></article><article class="finance-stat"><span>Stok değeri</span><strong>${currency(Number(item.amount) * Number(item.purchasePrice || 0))}</strong><small>${currency(item.purchasePrice || 0)} / ${escapeHtml(item.unit)}</small></article></div>
       <p class="modal-note"><strong>${escapeHtml(item.category || "Kategorisiz")}</strong><br/>Tedarikçi: ${escapeHtml(item.supplier || "Belirtilmedi")}<br/>Son hareket: ${escapeHtml(item.movements?.[0]?.note || "Henüz hareket yok")}</p>
-      <div class="stock-actions"><button class="button button-primary" data-action="refresh-online-offers" data-stock-prefill="${item.id}" ${productSearchInFlight ? "disabled" : ""}>${productSearchInFlight ? "İnternette aranıyor…" : "İnternetten fiyatları getir"}</button><button class="button button-secondary" data-action="stock-movement" data-stock-prefill="${item.id}">Adet ekle / çıkar</button><button class="button button-secondary" data-action="add-stock-offer" data-stock-prefill="${item.id}">Elle fiyat ekle</button></div>
-      <section class="patient-section"><div class="patient-section-title"><strong>Satın alma · kargo dahil ucuzdan pahalıya</strong><span>${offers.length}</span></div><div class="purchase-list">${offers.length ? offers.map((offer) => { const total = Number(offer.unitPrice) + Number(offer.shippingPrice || 0); const checked = offer.checkedAt ? new Date(offer.checkedAt).toLocaleString("tr-TR") : "Elle eklendi"; return `<div class="purchase-row"><span><strong>${escapeHtml(offer.seller)}</strong><small>Ürün ${currency(offer.unitPrice)} + kargo ${currency(offer.shippingPrice || 0)} · ${escapeHtml(checked)}</small></span><span class="purchase-actions"><a class="mini-action" href="${escapeHtml(offer.productUrl)}" target="_blank" rel="noopener noreferrer">${currency(total)} · Satın al</a><button class="delete-button" data-delete-stock-offer="${offer.id}" data-stock-id="${item.id}" aria-label="${escapeHtml(offer.seller)} satın alma fiyatını sil">Sil</button></span></div>`; }).join("") : `<p class="empty-inline">Henüz teklif yok. “İnternetten fiyatları getir” ile güncel seçenekleri arayın.</p>`}</div></section>
-      ${serverUrl ? `<a class="button button-secondary" href="${escapeHtml(serverUrl.replace(/\/$/, ""))}/dashboard/stocks">Canlı fiyatları sunucuda yenile</a>` : `<p class="modal-note">Canlı mağaza fiyatlarını karşılaştırmak için ClinicNova sunucunuzu bağlayın.</p>`}
+      <div class="stock-actions"><button class="button button-primary" data-action="add-stock-offer" data-stock-prefill="${item.id}" ${productSearchInFlight ? "disabled" : ""}>${productSearchInFlight ? "Fiyat okunuyor…" : "Satın alma sayfası ekle"}</button><button class="button button-secondary" data-action="stock-movement" data-stock-prefill="${item.id}">Adet ekle / çıkar</button></div>
+      <section class="patient-section"><div class="patient-section-title"><strong>Satın alma sayfaları</strong><span>${offers.length}</span></div><div class="purchase-list">${offers.length ? offers.map((offer) => { const total = Number(offer.unitPrice) + Number(offer.shippingPrice || 0); const checked = offer.checkedAt ? new Date(offer.checkedAt).toLocaleString("tr-TR") : "Kayıtlı fiyat"; return `<div class="purchase-row"><span><strong>${escapeHtml(offer.seller)}</strong><small>Ürün ${currency(offer.unitPrice)} + kargo ${currency(offer.shippingPrice || 0)} · ${escapeHtml(checked)}</small></span><span class="purchase-actions"><a class="mini-action" href="${escapeHtml(offer.productUrl)}" target="_blank" rel="noopener noreferrer">${currency(total)} · Satın al</a><button class="delete-button" data-delete-stock-offer="${offer.id}" data-stock-id="${item.id}" aria-label="${escapeHtml(offer.seller)} satın alma fiyatını sil">Sil</button></span></div>`; }).join("") : `<p class="empty-inline">Henüz sayfa eklenmedi. Mağazadaki ürün bağlantısını girerek güncel fiyatı görebilirsiniz.</p>`}</div></section>
+      ${serverUrl ? `<p class="modal-note">Ürün sayfasını yapıştırın; ClinicNova fiyatı okuyup “Satın al” bağlantısını hazırlar.</p>` : `<p class="modal-note">Sayfadaki fiyatı okumak için ClinicNova sunucunuzu bağlayın.</p>`}
     </div>`);
   }
 
@@ -1412,12 +1412,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     const item = stockItems.find((entry) => Number(entry.id) === Number(preferredItemId));
     if (!item) return;
     openModal("SATIN ALMA", `${item.name} fiyatı`, `<form id="stockOfferForm" class="modal-grid"><input type="hidden" name="itemId" value="${item.id}" />
-      <label class="field">Satıcı<input name="seller" required /></label><div class="modal-grid two"><label class="field">Ürün fiyatı<input name="unitPrice" type="number" min="0.01" step="0.01" required /></label><label class="field">Kargo<input name="shippingPrice" type="number" min="0" step="0.01" value="0" /></label></div>
-      <label class="field">Güvenli ürün adresi<input name="productUrl" type="url" pattern="https://.*" placeholder="https://..." required /></label>
-      <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Fiyatı kaydet</button></div></form>`);
+      <p class="modal-note">Mağazadaki ürünün satın alma sayfasını yapıştırın. Güncel fiyat ve satıcı bilgisi otomatik okunacaktır.</p>
+      <label class="field">Satın alma sayfası<input name="productUrl" type="url" pattern="https://.*" placeholder="https://magaza.com/urun/..." required /></label>
+      <div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button type="submit" class="button button-primary">Fiyatı getir</button></div></form>`);
   }
 
-  function refreshOnlineOffers(preferredItemId) {
+  function refreshOnlineOffers(preferredItemId, productUrl) {
     const item = stockItems.find((entry) => Number(entry.id) === Number(preferredItemId));
     if (!item) return showToast("Stok ürünü bulunamadı.");
     const serverUrl = previewMode ? "" : storage.get("clinicnova.serverUrl", "");
@@ -1426,7 +1426,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     if (productSearchInFlight) return showToast("Ürün fiyatı araması devam ediyor.");
     productSearchInFlight = true;
     openStockDetail(item.id);
-    window.ClinicNovaNative.productSearch(serverUrl, item.name, String(item.id));
+    window.ClinicNovaNative.productSearch(serverUrl, productUrl, String(item.id));
   }
 
   function openPatientDetail(id) {
@@ -2127,7 +2127,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     if (action === "add-stock-item") { closeModal(); return openAddStockItem(); }
     if (action === "add-treatment-plan") { closeModal(); return openAddTreatmentPlan(); }
     if (action === "stock-movement") { closeModal(); return openStockMovement(target.dataset.stockPrefill); }
-    if (action === "refresh-online-offers") return refreshOnlineOffers(target.dataset.stockPrefill);
     if (action === "add-stock-offer") { closeModal(); return openAddStockOffer(target.dataset.stockPrefill); }
     if (action === "add-stock-recipe") { closeModal(); return openAddStockRecipe(); }
     if (action === "add-treatment-history") return openAddTreatmentHistory(target.dataset.patientPrefill);
@@ -2434,9 +2433,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       event.preventDefault();
       const form = new FormData(event.target);
       const item = stockItems.find((entry) => Number(entry.id) === Number(form.get("itemId")));
-      const offer = { id: Date.now(), seller: String(form.get("seller") || "").trim(), unitPrice: Number(form.get("unitPrice")), shippingPrice: Number(form.get("shippingPrice") || 0), productUrl: String(form.get("productUrl") || "").trim(), inStock: true, source: "manual" };
-      if (!item || !offer.seller || !Number.isFinite(offer.unitPrice) || offer.unitPrice <= 0 || !offer.productUrl.startsWith("https://")) return showToast("Satıcı, fiyat ve HTTPS ürün adresini kontrol edin.");
-      (item.offers ||= []).push(offer); queueCreate("STOCK_OFFER", offer.id, { itemId: String(item.id), seller: offer.seller, unitPrice: offer.unitPrice, shippingPrice: offer.shippingPrice, productUrl: offer.productUrl, inStock: offer.inStock }); saveData(); renderAll(); openStockDetail(item.id); showToast("Satın alma fiyatı kaydedildi.");
+      const productUrl = String(form.get("productUrl") || "").trim();
+      if (!item || !productUrl.startsWith("https://")) return showToast("Geçerli bir HTTPS satın alma sayfası girin.");
+      closeModal(); refreshOnlineOffers(item.id, productUrl);
     }
     if (event.target.id === "connectionForm") {
       event.preventDefault();

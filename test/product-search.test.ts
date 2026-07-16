@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { searchProductOffers } from "../src/lib/services/productSearchService";
+import { inspectProductPage, searchProductOffers } from "../src/lib/services/productSearchService";
 
 test("internet product offers are validated, filtered and sorted by delivered total", async () => {
   const previousUrl = process.env.PRODUCT_SEARCH_API_URL;
@@ -24,6 +24,34 @@ test("internet product offers are validated, filtered and sorted by delivered to
     assert.equal(new URL(requestedUrl).searchParams.get("q"), "Anestezi kartuşu");
     assert.equal(authorization, "Bearer test-product-search-key-123456789");
     assert.deepEqual(offers.map((offer) => offer.seller), ["Ucuz", "Pahalı"]);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.PRODUCT_SEARCH_API_URL; else process.env.PRODUCT_SEARCH_API_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.PRODUCT_SEARCH_API_KEY; else process.env.PRODUCT_SEARCH_API_KEY = previousKey;
+  }
+});
+
+test("a dentist can paste a purchase page and receive its live price", async () => {
+  const previousUrl = process.env.PRODUCT_SEARCH_API_URL;
+  const previousKey = process.env.PRODUCT_SEARCH_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.PRODUCT_SEARCH_API_URL = "https://search.example.test/products";
+  process.env.PRODUCT_SEARCH_API_KEY = "test-product-search-key-123456789";
+  let requestedUrl = "";
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input);
+    return new Response(JSON.stringify({ offers: [
+      { seller: "Dental Mağaza", unitPrice: 249.9, shippingPrice: 0, productUrl: "https://redirect.example/untrusted", inStock: true }
+    ] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const productUrl = "https://shop.example/kompozit-dolgu";
+    const offer = await inspectProductPage(productUrl);
+    assert.equal(new URL(requestedUrl).searchParams.get("url"), productUrl);
+    assert.equal(offer.seller, "Dental Mağaza");
+    assert.equal(offer.unitPrice, 249.9);
+    assert.equal(offer.productUrl, productUrl);
+    await assert.rejects(() => inspectProductPage("http://shop.example/urun"));
   } finally {
     globalThis.fetch = previousFetch;
     if (previousUrl === undefined) delete process.env.PRODUCT_SEARCH_API_URL; else process.env.PRODUCT_SEARCH_API_URL = previousUrl;
