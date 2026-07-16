@@ -143,6 +143,8 @@
   let syncMap = storage.get("clinicnova.syncMap", {});
   let syncing = false;
   let authenticatedThisRun = false;
+  let previewMode = false;
+  let previewClinicName = "İnceleme Kliniği";
   const LOCAL_AUTH_ITERATIONS = 210000;
 
   function localDate(date) {
@@ -207,6 +209,12 @@
     return storage.get("clinicnova.localAccount", null);
   }
   function applyLocalIdentity(account = localAccount()) {
+    if (previewMode) {
+      $("#branchLabel").textContent = previewClinicName;
+      $("#welcomeTitle").textContent = "Sürüm incelemeye hazır 👋";
+      $("#profileAvatar").textContent = "İN";
+      return;
+    }
     if (!account) return;
     const adminName = account.adminName || account.name || "ClinicNova";
     $("#branchLabel").textContent = account.clinicName || "ClinicNova";
@@ -220,6 +228,7 @@
     return ({ PLANNED: "Planlandı", ARRIVED: "Geldi", COMPLETED: "Tamamlandı", PENDING: "Onay bekliyor" })[status] || status;
   }
   function saveData() {
+    if (previewMode) return;
     storage.set("clinicnova.patients", state.patients);
     storage.set("clinicnova.appointments", state.appointments);
     storage.set("clinicnova.transactions", state.transactions);
@@ -242,13 +251,14 @@
   }
 
   function persistSyncState() {
+    if (previewMode) return updateNetworkBadge();
     storage.set("clinicnova.syncQueue", syncQueue);
     storage.set("clinicnova.syncMap", syncMap);
     updateNetworkBadge();
   }
 
   function queueCreate(entityType, clientId, payload) {
-    if (demoMode) return;
+    if (demoMode || previewMode) return;
     const id = String(clientId);
     const pending = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
     if (pending) pending.payload = payload;
@@ -257,7 +267,7 @@
   }
 
   function queueUpdate(entityType, clientId, payload) {
-    if (demoMode) return;
+    if (demoMode || previewMode) return;
     const id = String(clientId);
     const pendingCreate = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
     if (pendingCreate) pendingCreate.payload = { ...pendingCreate.payload, ...payload };
@@ -266,7 +276,7 @@
   }
 
   function queueDelete(entityType, clientId, payload = {}) {
-    if (demoMode) return;
+    if (demoMode || previewMode) return;
     const id = String(clientId);
     const hadPendingCreate = syncQueue.some((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
     syncQueue = syncQueue.filter((item) => !(item.entityType === entityType && item.clientId === id));
@@ -288,7 +298,7 @@
   }
 
   function queueExistingLocalRecords() {
-    if (demoMode || storage.get("clinicnova.syncBootstrapComplete", false)) return;
+    if (demoMode || previewMode || storage.get("clinicnova.syncBootstrapComplete", false)) return;
     state.patients.filter((item) => Number(item.id) > 1_000_000_000_000).forEach((item) => queueCreate("PATIENT", item.id, patientPayload(item)));
     state.appointments.filter((item) => Number(item.id) > 1_000_000_000_000).forEach((item) => queueCreate("APPOINTMENT", item.id, appointmentPayload(item)));
     state.transactions.filter((item) => item.patientId && Number(item.id) > 1_000_000_000_000).forEach((item) => queueCreate("PAYMENT", item.id, paymentPayload(item)));
@@ -681,7 +691,7 @@
   }
 
   function openRenameClinic() {
-    openModal("KLİNİK AYARLARI", "Klinik adını değiştir", `<form id="clinicNameForm" class="modal-grid"><label class="field">Klinik adı<input name="name" value="${escapeHtml(localAccount()?.clinicName || "ClinicNova")}" required maxlength="120" /></label><div class="modal-actions"><button type="button" class="button button-secondary" data-action="clinic-management">Vazgeç</button><button type="submit" class="button button-primary">Adı güncelle</button></div></form>`);
+    openModal("KLİNİK AYARLARI", "Klinik adını değiştir", `<form id="clinicNameForm" class="modal-grid"><label class="field">Klinik adı<input name="name" value="${escapeHtml(previewMode ? previewClinicName : localAccount()?.clinicName || "ClinicNova")}" required maxlength="120" /></label><div class="modal-actions"><button type="button" class="button button-secondary" data-action="clinic-management">Vazgeç</button><button type="submit" class="button button-primary">Adı güncelle</button></div></form>`);
   }
 
   function openStockDetail(id) {
@@ -738,6 +748,10 @@
   }
 
   function openConnection() {
+    if (previewMode) {
+      openModal("İNCELEME MODU", "Sunucu bağlantısı kapalı", `<div class="modal-grid"><p class="modal-note">İnceleme verileri örnektir ve gerçek klinik hesabına gönderilmez. Sunucu eşitlemesini kullanmak için incelemeden çıkıp yerel veya sunucu hesabınızla giriş yapın.</p><button class="button button-primary" data-close-modal>Anladım</button></div>`);
+      return;
+    }
     const saved = storage.get("clinicnova.serverUrl", "");
     openModal("SENKRONİZASYON", "Sunucuya bağlan", `<form id="connectionForm" class="modal-grid">
       <p class="modal-note">Veriler önce bu cihazda kaydedilir. HTTPS sunucunuzu bağladıktan sonra bekleyen ${syncQueue.length} işlem klinik hesabınıza gönderilir; tekrar denemeler çift kayıt oluşturmaz.</p>
@@ -747,6 +761,14 @@
   }
 
   function openSecurity() {
+    if (previewMode) {
+      openModal("İNCELEME MODU", "Örnek veriler korumalı", `<div class="modal-grid">
+        <p class="modal-note"><strong>Gerçek verilerden ayrı</strong><br/>Bu oturumdaki hasta, randevu, stok ve finans kayıtları yalnızca sürümü denemeniz içindir.</p>
+        <p class="modal-note"><strong>Kaydedilmez ve eşitlenmez</strong><br/>Yaptığınız denemeler uygulamadan çıktığınızda silinir; mevcut klinik hesabınız ve kayıtlarınız değişmez.</p>
+        <button class="button button-secondary" data-reset-demo>Örnek verileri sıfırla</button>
+      </div>`);
+      return;
+    }
     openModal("GÜVENLİK", "Veri ve uygulama", `<div class="modal-grid">
       <p class="modal-note"><strong>Yerel çalışma</strong><br/>Hasta, randevu ve tahsilat kayıtları bağlantı olmasa da cihazın uygulama alanında kalıcı saklanır. Bekleyen işlem: ${syncQueue.length}.</p>
       <p class="modal-note"><strong>Sunucu eşitlemesi</strong><br/>Yalnızca bağladığınız HTTPS ClinicNova sunucusuna, giriş yaptığınız klinik hesabı kapsamında gönderilir.</p>
@@ -755,7 +777,7 @@
   }
 
   function openProfile() {
-    const account = localAccount() || storage.get("clinicnova.session", {}) || {};
+    const account = previewMode ? { adminName: "Sürüm İnceleme", email: "Örnek veriler", clinicName: previewClinicName } : localAccount() || storage.get("clinicnova.session", {}) || {};
     openModal("PROFİL", account.adminName || "ClinicNova Yöneticisi", `<div class="modal-grid">
       <p class="modal-note"><strong>Yerel yönetici</strong><br/>${escapeHtml(account.email || "E-posta belirtilmedi")}<br/>${escapeHtml(account.clinicName || "ClinicNova")}</p>
       <div class="finance-stats"><article class="finance-stat"><span>Aktif hasta</span><strong>${state.patients.length}</strong><small>Cihazdaki kayıtlar</small></article><article class="finance-stat"><span>Bugünkü randevu</span><strong>${state.appointments.filter((item) => item.date === todayIso).length}</strong><small>Günlük plan</small></article></div>
@@ -830,6 +852,11 @@
 
   function updateNetworkBadge() {
     const badge = $("#networkBadge");
+    if (previewMode) {
+      badge.classList.add("offline");
+      $("span", badge).textContent = "İnceleme modu";
+      return;
+    }
     const online = navigator.onLine;
     badge.classList.toggle("offline", !online);
     const connected = Boolean(storage.get("clinicnova.serverUrl", ""));
@@ -843,12 +870,42 @@
     applyLocalIdentity();
     renderAll();
     navigate(state.activeView);
+    updateNetworkBadge();
   }
   function showLogin() {
     authenticatedThisRun = false;
     $("#appShell").hidden = true;
     $("#loginScreen").hidden = false;
     if (!demoMode) { $("#loginPassword").value = ""; configureEntryMode(); }
+  }
+
+  function enterPreviewMode() {
+    previewMode = true;
+    previewClinicName = "İnceleme Kliniği";
+    state.patients = JSON.parse(JSON.stringify(defaultPatients));
+    state.appointments = JSON.parse(JSON.stringify(defaultAppointments));
+    state.transactions = JSON.parse(JSON.stringify(defaultTransactions));
+    state.treatmentHistory = JSON.parse(JSON.stringify(defaultTreatmentHistory));
+    state.patientMedia = {};
+    state.selectedDate = todayIso;
+    state.patientFilter = "ALL";
+    state.patientQuery = "";
+    state.transactionFilter = "ALL";
+    state.appointmentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    state.activeView = "home";
+    hotLeads = JSON.parse(JSON.stringify(defaultHotLeads));
+    treatmentPlans = JSON.parse(JSON.stringify(defaultTreatmentPlans));
+    stockItems = JSON.parse(JSON.stringify(defaultStockItems));
+    stockRecipes = JSON.parse(JSON.stringify(defaultStockRecipes));
+    clinicDoctors = JSON.parse(JSON.stringify(defaultClinicDoctors));
+    clinicChairs = JSON.parse(JSON.stringify(defaultClinicChairs));
+    communicationLog = JSON.parse(JSON.stringify(defaultCommunicationLog));
+    consentRecords = JSON.parse(JSON.stringify(defaultConsentRecords));
+    trashItems = [];
+    syncQueue = [];
+    syncMap = {};
+    showApp();
+    showToast("İnceleme modu açıldı. Parola gerekmez; değişiklikler kaydedilmez.");
   }
 
   function normalizedServerUrl(value) {
@@ -875,7 +932,7 @@
   }
 
   function syncPending(force = false) {
-    if (demoMode || syncing || !navigator.onLine) return;
+    if (demoMode || previewMode || syncing || !navigator.onLine) return;
     const serverUrl = storage.get("clinicnova.serverUrl", "");
     if (!serverUrl || !window.ClinicNovaNative?.sync) return;
     const lastPullAt = Number(storage.get("clinicnova.lastPullAt", 0));
@@ -990,7 +1047,7 @@
     const account = localAccount();
     const creating = !account;
     $("#serverUrlField").hidden = true;
-    $("#previewDemoButton").hidden = true;
+    $("#previewDemoButton").hidden = false;
     $("#serverLoginButton").hidden = false;
     $("#recoveryButton").hidden = creating;
     $("#localSetupFields").hidden = !creating;
@@ -1075,6 +1132,7 @@
   $("#recoveryButton").addEventListener("click", () => {
     openModal("HESAP KURTARMA", "Yerel parolayı sıfırla", `<form id="recoveryForm" class="modal-grid"><label class="field">Kurtarma kodu<input name="code" autocomplete="off" required /></label><label class="field">Yeni parola<input name="password" type="password" minlength="10" autocomplete="new-password" required /></label><div class="modal-actions"><button type="button" class="button button-secondary" data-close-modal>Vazgeç</button><button class="button button-primary" type="submit">Parolayı yenile</button></div></form>`);
   });
+  $("#previewDemoButton").addEventListener("click", enterPreviewMode);
 
   document.addEventListener("click", (event) => {
     const target = event.target.closest("button, [data-go], [data-action]");
@@ -1291,7 +1349,10 @@
     if (action === "transaction-filter") return openTransactionFilter();
     if (action === "connect") return openConnection();
     if (action === "security") return openSecurity();
-    if (action === "logout") { storage.set("clinicnova.session", null); storage.set("clinicnova.previewSession", null); closeModal(); showLogin(); showToast("Oturum kapatıldı."); return; }
+    if (action === "logout") {
+      if (previewMode) return window.location.reload();
+      storage.set("clinicnova.session", null); storage.set("clinicnova.previewSession", null); closeModal(); showLogin(); showToast("Oturum kapatıldı."); return;
+    }
   });
 
   $("#patientSearch").addEventListener("input", (event) => { state.patientQuery = event.target.value; renderPatients(); });
@@ -1355,6 +1416,9 @@
       event.preventDefault();
       const name = String(new FormData(event.target).get("name") || "").trim();
       if (name.length < 2 || name.length > 120) return showToast("Klinik adı 2-120 karakter olmalıdır.");
+      if (previewMode) {
+        previewClinicName = name; applyLocalIdentity(); saveData(); openClinicManagement(); showToast("Klinik adı inceleme oturumu için güncellendi."); return;
+      }
       const account = localAccount() || {}; account.clinicName = name; storage.set("clinicnova.localAccount", account); applyLocalIdentity(account);
       queueUpdate("CLINIC_CONFIG", "clinic", clinicConfigPayload()); saveData(); openClinicManagement(); showToast("Klinik adı güncellendi."); return;
     }

@@ -282,6 +282,32 @@ test("production Android starts with an empty persistent local workspace", async
   await expect(page.getByRole("heading", { name: /Günaydın, Tuna/ })).toBeVisible();
 });
 
+test("production Android can be reviewed without a password and keeps sample data isolated", async ({ page }) => {
+  await page.goto(mobileUrl);
+  await expect(page.getByRole("button", { name: "Sürümü incele" })).toBeVisible();
+  await page.getByRole("button", { name: "Sürümü incele" }).click();
+  await expect(page.getByRole("heading", { name: "Sürüm incelemeye hazır 👋" })).toBeVisible();
+  await expect(page.getByText("İnceleme modu", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Hastalar", exact: true }).click();
+  await expect(page.locator("#patientList").getByText("Ayşe Yılmaz", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Hasta ekle" }).click();
+  await page.locator('#patientForm input[name="name"]').fill("İnceleme Hastası");
+  await page.locator('#patientForm input[name="phone"]').fill("+90 555 000 11 22");
+  await page.getByRole("button", { name: "Hastayı kaydet" }).click();
+  await expect(page.locator("#patientList").getByText("İnceleme Hastası", { exact: true })).toBeVisible();
+  const persisted = await page.evaluate(() => ({
+    account: localStorage.getItem("clinicnova.localAccount"),
+    patients: JSON.parse(localStorage.getItem("clinicnova.patients") || "[]") as Array<{ name?: string }>,
+    queue: JSON.parse(localStorage.getItem("clinicnova.syncQueue") || "[]") as unknown[]
+  }));
+  expect(persisted.account).toBeNull();
+  expect(persisted.patients.some((patient) => patient.name === "İnceleme Hastası")).toBe(false);
+  expect(persisted.queue).toEqual([]);
+  await page.getByRole("button", { name: "Diğer", exact: true }).click();
+  await page.getByRole("button", { name: /Çıkış yap/ }).click();
+  await expect(page.getByRole("heading", { name: "Yerel yönetici hesabını oluşturun." })).toBeVisible();
+});
+
 test("local Android records queue once and acknowledge server synchronization", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
