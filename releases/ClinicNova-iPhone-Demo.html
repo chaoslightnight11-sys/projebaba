@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#f8fafc" />
     <meta name="color-scheme" content="light dark" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-OlvGKa6nuvDFyedRFaG0eDwzhRErgFyHw1up/JMNT6Y=' 'sha256-BKes9NJyd2hHaXJjdN0hz7jN5d3KdGv3kysBbxUrf1o='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self' https:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-OlvGKa6nuvDFyedRFaG0eDwzhRErgFyHw1up/JMNT6Y=' 'sha256-QP7wnt7Ia+A5SbZE6TkPqfgZjXrvNA/PBg6ahapgL8U='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self' https:" />
     <title>ClinicNova</title>
     <style>:root {
   color-scheme: light;
@@ -157,6 +157,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .status-pill.PLANNED { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); }
 .status-pill.ARRIVED, .status-pill.COMPLETED { color: var(--success); background: color-mix(in srgb, var(--success) 11%, transparent); }
 .status-pill.PENDING { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); }
+.status-pill.CANCELLED, .status-pill.NO_SHOW { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .quick-grid button { border: 0; min-width: 0; border-radius: 17px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text); background: transparent; padding: 4px 1px; font-size: 9px; font-weight: 700; transition: transform .15s; }
 .quick-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; }
@@ -511,7 +512,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
           <div class="page-heading"><div><span class="eyebrow">DİJİTAL ONAM</span><h1>Onam merkezi</h1><p class="muted">Hasta onamları, imza durumu ve takip</p></div><button class="button button-primary button-square" data-action="add-consent" aria-label="Onam oluştur"><svg><use href="#i-plus"/></svg></button></div>
           <div id="consentStats" class="finance-stats"></div>
           <button class="button button-primary full-action" data-action="add-consent">Yeni onam oluştur</button>
-          <div id="consentFilterChips" class="filter-chips"><button class="active" data-consent-filter="ALL">Tümü</button><button data-consent-filter="İmza bekliyor">Bekleyen</button><button data-consent-filter="İmzalandı">İmzalı</button><button data-consent-filter="Taslak">Taslak</button></div>
+          <div id="consentFilterChips" class="filter-chips"><button class="active" data-consent-filter="ALL">Tümü</button><button data-consent-filter="İmza bekliyor">Bekleyen</button><button data-consent-filter="İmzalandı">İmzalı</button><button data-consent-filter="Taslak">Taslak</button><button data-consent-filter="İptal edildi">İptal</button></div>
           <div class="section-heading"><div><span class="eyebrow">ONAM KAYITLARI</span><h2>Hasta belgeleri</h2></div></div>
           <div id="consentList" class="list-stack page-list"></div>
         </section>
@@ -613,9 +614,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     { id: 3, name: "Lukas Weber", country: "Almanya", treatment: "Zirkonyum kaplama", score: 82, phone: "+49 700 000 1002" }
   ];
   const defaultTreatmentPlans = [
-    { id: 1, patient: "Ayşe Yılmaz", treatment: "İmplant", tooth: "36", doctor: "Dr. Emir Aydın", branch: "Nişantaşı Klinik", plannedAt: "15 Temmuz 2026", total: 42000, paid: 18500, status: "Devam ediyor", note: "İmplant cerrahisi sonrası protez üst yapı planlandı." },
-    { id: 2, patient: "Mehmet Demir", treatment: "Kanal tedavisi", tooth: "26", doctor: "Dr. Lara Er", branch: "Nişantaşı Klinik", plannedAt: "18 Temmuz 2026", total: 12000, paid: 7200, status: "2. seans", note: "İkinci seans ve kalıcı dolgu kontrolü." },
-    { id: 3, patient: "Can Şahin", treatment: "Ortodonti", tooth: "Tüm ağız", doctor: "Dr. Lara Er", branch: "Nişantaşı Klinik", plannedAt: "22 Temmuz 2026", total: 36000, paid: 29500, status: "Kontrol bekliyor", note: "Aylık plak ve kapanış kontrolü." }
+    { id: 1, patientId: 1, patient: "Ayşe Yılmaz", treatment: "İmplant", tooth: "36", doctor: "Dr. Emir Aydın", branch: "Nişantaşı Klinik", plannedAt: "15 Temmuz 2026", total: 42000, paid: 18500, status: "Devam ediyor", note: "İmplant cerrahisi sonrası protez üst yapı planlandı." },
+    { id: 2, patientId: 2, patient: "Mehmet Demir", treatment: "Kanal tedavisi", tooth: "26", doctor: "Dr. Lara Er", branch: "Nişantaşı Klinik", plannedAt: "18 Temmuz 2026", total: 12000, paid: 7200, status: "2. seans", note: "İkinci seans ve kalıcı dolgu kontrolü." },
+    { id: 3, patientId: 4, patient: "Can Şahin", treatment: "Ortodonti", tooth: "Tüm ağız", doctor: "Dr. Lara Er", branch: "Nişantaşı Klinik", plannedAt: "22 Temmuz 2026", total: 36000, paid: 29500, status: "Kontrol bekliyor", note: "Aylık plak ve kapanış kontrolü." }
   ];
   const defaultStockItems = [
     { id: 1, name: "Anestezi kartuşu", category: "Anestezi", amount: 8, minimum: 20, unit: "adet", supplier: "DentalLine", purchasePrice: 42, movements: [], offers: [{ seller: "DentalLine", unitPrice: 39, shippingPrice: 30, productUrl: "https://example.com", inStock: true }] },
@@ -780,7 +781,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     return state.patients.find((patient) => patient.id === Number(id));
   }
   function statusLabel(status) {
-    return ({ PLANNED: "Planlandı", ARRIVED: "Geldi", COMPLETED: "Tamamlandı", PENDING: "Onay bekliyor" })[status] || status;
+    return ({ PLANNED: "Planlandı", ARRIVED: "Geldi", COMPLETED: "Tamamlandı", PENDING: "Onay bekliyor", CANCELLED: "İptal edildi", NO_SHOW: "Gelmedi" })[status] || status;
   }
   function saveData() {
     if (previewMode) return;
@@ -1218,13 +1219,28 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   function openConsentDetail(id) {
     const item = consentRecords.find((entry) => Number(entry.id) === Number(id));
     if (!item) return;
+    const history = Array.isArray(item.history) && item.history.length ? item.history : [{ status: item.status, date: item.date, note: "Onam kaydı oluşturuldu." }];
     openModal("ONAM DETAYI", item.patient, `<div class="modal-grid">
       <div class="finance-stats"><article class="finance-stat"><span>Durum</span><strong>${escapeHtml(item.status)}</strong><small>${escapeHtml(item.date)}</small></article><article class="finance-stat"><span>Belge sürümü</span><strong>${escapeHtml(item.version || "v1")}</strong><small>${escapeHtml(item.language || "Türkçe")}</small></article></div>
       <p class="modal-note"><strong>${escapeHtml(item.form)}</strong><br/>Tedavi: ${escapeHtml(item.treatment || "Genel")}<br/>İmza yöntemi: ${escapeHtml(item.channel || "Klinikte")}</p>
       <p class="modal-note"><strong>İmza bilgisi</strong><br/>${item.status === "İmzalandı" ? `${escapeHtml(item.signer || item.patient)} · ${escapeHtml(item.signedAt || item.date)}` : "Hasta imzası henüz tamamlanmadı."}</p>
       <p class="modal-note"><strong>Klinik notu</strong><br/>${escapeHtml(item.note || "Not eklenmemiş.")}</p>
-      ${item.status !== "İmzalandı" ? `<button class="button button-primary" data-sign-consent="${item.id}">Klinikte imzalandı olarak işaretle</button>` : ""}
+      <section class="patient-section"><div class="patient-section-title"><strong>Durum geçmişi</strong><span>${history.length}</span></div><div class="history-list">${history.map((entry) => `<article><i>${entry.status === "İmzalandı" ? "✓" : entry.status === "İptal edildi" ? "×" : "•"}</i><span><strong>${escapeHtml(entry.status)}</strong><small>${escapeHtml(entry.date || "Şimdi")}</small>${entry.note ? `<p>${escapeHtml(entry.note)}</p>` : ""}</span></article>`).join("")}</div></section>
+      ${item.status !== "İptal edildi" ? `<button class="button button-primary" data-edit-consent-status="${item.id}">Durumu değiştir</button>` : `<p class="modal-note">İptal edilen onam yeniden etkinleştirilmez. Yeni belge sürümü oluşturun.</p>`}
     </div>`);
+  }
+
+  function openConsentStatusEditor(id) {
+    const item = consentRecords.find((entry) => Number(entry.id) === Number(id));
+    if (!item) return;
+    const options = item.status === "İmzalandı" ? ["İmzalandı", "İptal edildi"] : ["Taslak", "İmza bekliyor", "İmzalandı", "İptal edildi"];
+    openModal("ONAM DURUMU", item.patient, `<form id="consentStatusForm" class="modal-grid"><input type="hidden" name="consentId" value="${item.id}" />
+      <p class="modal-note"><strong>${escapeHtml(item.form)}</strong><br/>Mevcut durum: ${escapeHtml(item.status)}. İmzalı belge yalnızca iptal edilebilir; eski imza kaydı korunur.</p>
+      <label class="field">Yeni durum<select name="status">${options.map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label>
+      <label class="field">İmzalayan / işlem yapan<input name="actor" value="${escapeHtml(item.signer || item.patient)}" required /></label>
+      <label class="field">Açıklama<textarea name="note" required placeholder="Durum değişikliği nedeni veya imza notu"></textarea></label>
+      <div class="modal-actions"><button type="button" class="button button-secondary" data-consent="${item.id}">Vazgeç</button><button type="submit" class="button button-primary">Durumu kaydet</button></div>
+    </form>`);
   }
 
   function openAddStockItem() {
@@ -1363,9 +1379,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     const appointment = state.appointments.find((item) => item.id === Number(id));
     if (!appointment) return;
     const patient = patientById(appointment.patientId);
+    const appointmentTreatment = treatmentKey(appointment.treatment);
+    const signedConsent = consentRecords.find((item) => { const consentTreatment = treatmentKey(item.treatment); return Number(item.patientId) === Number(appointment.patientId) && item.status === "İmzalandı" && (consentTreatment === "genel" || appointmentTreatment.includes(consentTreatment) || consentTreatment.includes(appointmentTreatment)); });
     openModal("RANDEVU DETAYI", `${appointment.time} · ${patient?.name || "Hasta"}`, `<div class="modal-grid">
       <p class="modal-note"><strong>${escapeHtml(appointment.treatment)}</strong><br/>${escapeHtml(appointment.doctor)} · ${escapeHtml(appointment.room)}<br/>${appointment.duration} dakika · ${statusLabel(appointment.status)}</p>
-      <label class="field">Durum<select id="appointmentStatus"><option value="PLANNED" ${appointment.status === "PLANNED" ? "selected" : ""}>Planlandı</option><option value="ARRIVED" ${appointment.status === "ARRIVED" ? "selected" : ""}>Geldi</option><option value="COMPLETED" ${appointment.status === "COMPLETED" ? "selected" : ""}>Tamamlandı</option><option value="PENDING" ${appointment.status === "PENDING" ? "selected" : ""}>Onay bekliyor</option></select></label>
+      <p class="modal-note"><strong>Onam kontrolü</strong><br/>${signedConsent ? `İmzalı: ${escapeHtml(signedConsent.form)} · ${escapeHtml(signedConsent.signedAt || signedConsent.date)}` : "Bu tedaviyle eşleşen imzalı onam bulunamadı. İşlem öncesi Onam bölümünü kontrol edin."}</p>
+      <label class="field">Durum<select id="appointmentStatus"><option value="PLANNED" ${appointment.status === "PLANNED" ? "selected" : ""}>Planlandı</option><option value="ARRIVED" ${appointment.status === "ARRIVED" ? "selected" : ""}>Geldi</option><option value="COMPLETED" ${appointment.status === "COMPLETED" ? "selected" : ""}>Tamamlandı</option><option value="PENDING" ${appointment.status === "PENDING" ? "selected" : ""}>Onay bekliyor</option><option value="NO_SHOW" ${appointment.status === "NO_SHOW" ? "selected" : ""}>Gelmedi</option><option value="CANCELLED" ${appointment.status === "CANCELLED" ? "selected" : ""}>İptal edildi</option></select></label>
       <button class="button button-primary" data-save-appointment="${appointment.id}">Durumu güncelle</button>
     </div>`);
   }
@@ -1778,12 +1797,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     if (target.dataset.consentFilter) { state.consentFilter = target.dataset.consentFilter; renderConsents(); return; }
     if (target.dataset.financeTransaction) return openFinanceDetail(target.dataset.financeTransaction);
     if (target.dataset.consent) return openConsentDetail(target.dataset.consent);
-    if (target.dataset.signConsent) {
-      const consent = consentRecords.find((item) => Number(item.id) === Number(target.dataset.signConsent));
-      if (!consent) return;
-      consent.status = "İmzalandı"; consent.signer = consent.patient; consent.signedAt = "Şimdi"; consent.date = "Şimdi";
-      saveData(); renderConsents(); openConsentDetail(consent.id); showToast("Onam imzalandı olarak kaydedildi."); return;
-    }
+    if (target.dataset.editConsentStatus) return openConsentStatusEditor(target.dataset.editConsentStatus);
     if (target.dataset.filter) { state.patientFilter = target.dataset.filter; $$("#patientFilters button").forEach((button) => button.classList.toggle("active", button === target)); renderPatients(); return; }
     if (target.dataset.restoreTrash) {
       const trashId = Number(target.dataset.restoreTrash);
@@ -1794,11 +1808,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
         state.patients.unshift(payload.patient);
         state.appointments.push(...payload.appointments);
         state.transactions.push(...payload.transactions);
+        treatmentPlans.push(...(payload.treatmentPlans || []));
+        consentRecords.push(...(payload.consents || []));
         if (payload.treatmentHistory?.length) state.treatmentHistory[payload.patient.id] = payload.treatmentHistory;
         if (payload.media?.length) state.patientMedia[payload.patient.id] = payload.media;
         queueCreate("PATIENT", payload.patient.id, patientPayload(payload.patient));
         payload.appointments.forEach((item) => queueCreate("APPOINTMENT", item.id, appointmentPayload(item)));
         payload.transactions.filter((item) => item.patientId).forEach((item) => queueCreate("PAYMENT", item.id, paymentPayload(item)));
+        (payload.treatmentPlans || []).forEach((item) => queueCreate("TREATMENT_PLAN", item.id, treatmentPlanPayload(item)));
       }
       if (trashItem.kind === "appointment") { state.appointments.push(payload); queueCreate("APPOINTMENT", payload.id, appointmentPayload(payload)); }
       if (trashItem.kind === "transaction") { state.transactions.unshift(payload); if (payload.patientId) queueCreate("PAYMENT", payload.id, paymentPayload(payload)); }
@@ -1844,17 +1861,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (target.dataset.deletePatient) {
       const patientId = Number(target.dataset.deletePatient);
       const patient = patientById(patientId);
-      if (!patient || !window.confirm(`${patient.name} ve bağlı randevu, ödeme, tedavi ve fotoğraf kayıtları silinsin mi?`)) return;
+      if (!patient || !window.confirm(`${patient.name} ve bağlı randevu, ödeme, tedavi planı, onam ve fotoğraf kayıtları silinsin mi?`)) return;
       const linkedAppointments = state.appointments.filter((item) => item.patientId === patientId);
       const linkedTransactions = state.transactions.filter((item) => item.patientId === patientId);
+      const linkedPlans = treatmentPlans.filter((item) => Number(item.patientId) === patientId);
+      const linkedConsents = consentRecords.filter((item) => Number(item.patientId) === patientId);
       linkedAppointments.filter((item) => item.status === "COMPLETED").forEach((item) => { applyLocalStockForAppointment(item, "CANCELLED"); item.status = "CANCELLED"; });
-      moveToTrash("patientBundle", patient.name, { patient, appointments: linkedAppointments, transactions: linkedTransactions, treatmentHistory: state.treatmentHistory[patientId] || [], media: state.patientMedia[patientId] || [] });
+      moveToTrash("patientBundle", patient.name, { patient, appointments: linkedAppointments, transactions: linkedTransactions, treatmentPlans: linkedPlans, consents: linkedConsents, treatmentHistory: state.treatmentHistory[patientId] || [], media: state.patientMedia[patientId] || [] });
       linkedAppointments.forEach((item) => queueDelete("APPOINTMENT", item.id));
       linkedTransactions.forEach((item) => queueDelete("PAYMENT", item.id));
+      linkedPlans.forEach((item) => queueDelete("TREATMENT_PLAN", item.id));
       queueDelete("PATIENT", patientId);
       state.patients = state.patients.filter((item) => item.id !== patientId);
       state.appointments = state.appointments.filter((item) => item.patientId !== patientId);
       state.transactions = state.transactions.filter((item) => item.patientId !== patientId);
+      treatmentPlans = treatmentPlans.filter((item) => Number(item.patientId) !== patientId);
+      consentRecords = consentRecords.filter((item) => Number(item.patientId) !== patientId);
       delete state.treatmentHistory[patientId];
       delete state.patientMedia[patientId];
       saveData(); renderAll(); closeModal(); showToast("Hasta ve bağlı kayıtları silindi."); return;
@@ -1867,6 +1889,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (deletedAppointment) moveToTrash("appointment", `${patientById(deletedAppointment.patientId)?.name || "Hasta"} randevusu`, deletedAppointment);
       if (deletedAppointment) queueDelete("APPOINTMENT", appointmentId);
       state.appointments = state.appointments.filter((item) => item.id !== appointmentId);
+      if (deletedAppointment) state.treatmentHistory[deletedAppointment.patientId] = (state.treatmentHistory[deletedAppointment.patientId] || []).filter((item) => Number(item.appointmentId) !== appointmentId);
       saveData(); renderAll(); closeModal(); showToast("Randevu silindi."); return;
     }
     if (target.dataset.deleteStockRecipe) {
@@ -1910,6 +1933,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     if (target.dataset.deleteDoctor) {
       const id = Number(target.dataset.deleteDoctor);
       const doctor = clinicDoctors.find((item) => Number(item.id) === id);
+      const activeAppointments = doctor ? state.appointments.filter((item) => item.doctor === doctor.name && item.date >= todayIso && !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(item.status)) : [];
+      if (activeAppointments.length) return showToast(`${doctor.name} için ${activeAppointments.length} aktif randevu var. Önce randevuları başka hekime aktarın.`);
       if (!doctor || !window.confirm(`${doctor.name} doktor listesinden silinsin mi? Geçmiş kayıtlar korunur.`)) return;
       clinicDoctors = clinicDoctors.filter((item) => Number(item.id) !== id);
       queueDelete("DOCTOR", id);
@@ -1917,6 +1942,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     }
     if (target.dataset.deleteChair) {
       const chair = target.dataset.deleteChair;
+      const activeAppointments = state.appointments.filter((item) => item.room === chair && item.date >= todayIso && !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(item.status));
+      if (activeAppointments.length) return showToast(`${chair} için ${activeAppointments.length} aktif randevu var. Önce randevuları başka koltuğa aktarın.`);
       if (!window.confirm(`${chair} silinsin mi? Geçmiş randevular korunur.`)) return;
       clinicChairs = clinicChairs.filter((item) => item !== chair);
       queueUpdate("CLINIC_CONFIG", "clinic", clinicConfigPayload());
@@ -1936,9 +1963,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       const appointment = state.appointments.find((item) => item.id === Number(target.dataset.saveAppointment));
       if (!appointment) return;
       const nextStatus = $("#appointmentStatus").value;
+      const previousStatus = appointment.status;
       const stockResult = applyLocalStockForAppointment(appointment, nextStatus);
       if (!stockResult.ok) return showToast(stockResult.message);
       appointment.status = nextStatus;
+      if (nextStatus === "COMPLETED" && previousStatus !== "COMPLETED") {
+        const patient = patientById(appointment.patientId);
+        (state.treatmentHistory[appointment.patientId] ||= []).unshift({ appointmentId: appointment.id, date: new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric" }).format(today), treatment: appointment.treatment, doctor: appointment.doctor, note: `${appointment.duration} dakikalık randevu tamamlandı.${appointment.stockUsage?.length ? " Malzeme reçetesi stoktan işlendi." : ""}` });
+        if (patient) patient.lastVisit = "Bugün";
+      }
+      if (previousStatus === "COMPLETED" && nextStatus !== "COMPLETED") state.treatmentHistory[appointment.patientId] = (state.treatmentHistory[appointment.patientId] || []).filter((item) => Number(item.appointmentId) !== Number(appointment.id));
       queueUpdate("APPOINTMENT", appointment.id, appointmentPayload(appointment));
       saveData(); renderAll(); closeModal(); showToast(stockResult.message); return;
     }
@@ -2149,9 +2183,28 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       const patient = patientById(form.get("patientId"));
       if (!patient) return showToast("Hasta seçimini kontrol edin.");
       const status = String(form.get("status") || "Taslak");
-      const consent = { id: Date.now(), patientId: patient.id, patient: patient.name, form: String(form.get("form") || "Genel tedavi onamı"), treatment: String(form.get("treatment") || "Genel tedavi").trim(), language: String(form.get("language") || "Türkçe"), channel: String(form.get("channel") || "Klinikte"), status, date: "Şimdi", signedAt: status === "İmzalandı" ? "Şimdi" : "", signer: status === "İmzalandı" ? patient.name : "", version: "v1", note: String(form.get("note") || "").trim() };
+      const consent = { id: Date.now(), patientId: patient.id, patient: patient.name, form: String(form.get("form") || "Genel tedavi onamı"), treatment: String(form.get("treatment") || "Genel tedavi").trim(), language: String(form.get("language") || "Türkçe"), channel: String(form.get("channel") || "Klinikte"), status, date: "Şimdi", signedAt: status === "İmzalandı" ? "Şimdi" : "", signer: status === "İmzalandı" ? patient.name : "", version: "v1", note: String(form.get("note") || "").trim(), history: [{ status, date: "Şimdi", note: "Onam kaydı oluşturuldu." }] };
       consentRecords.unshift(consent); state.consentFilter = "ALL";
       saveData(); renderAll(); closeModal(); navigate("consents"); showToast(status === "İmzalandı" ? "İmzalı onam kaydedildi." : "Onam kaydı oluşturuldu.");
+    }
+    if (event.target.id === "consentStatusForm") {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const consent = consentRecords.find((item) => Number(item.id) === Number(form.get("consentId")));
+      if (!consent) return showToast("Onam kaydı bulunamadı.");
+      const nextStatus = String(form.get("status") || "");
+      const actor = String(form.get("actor") || "").trim();
+      const note = String(form.get("note") || "").trim();
+      if (!actor || note.length < 3) return showToast("İşlem yapan kişi ve açıklamayı girin.");
+      if (consent.status === "İmzalandı" && !["İmzalandı", "İptal edildi"].includes(nextStatus)) return showToast("İmzalı onam yalnızca iptal edilebilir.");
+      if (consent.status === "İptal edildi") return showToast("İptal edilen onam değiştirilemez; yeni belge oluşturun.");
+      if (nextStatus === consent.status) return showToast("Yeni durum mevcut durumla aynı.");
+      consent.history = Array.isArray(consent.history) ? consent.history : [{ status: consent.status, date: consent.date, note: "Önceki kayıt" }];
+      consent.status = nextStatus; consent.date = "Şimdi";
+      consent.history.unshift({ status: nextStatus, date: "Şimdi", note: `${actor}: ${note}` });
+      if (nextStatus === "İmzalandı") { consent.signer = actor; consent.signedAt = "Şimdi"; }
+      if (nextStatus === "İptal edildi") consent.revokedBy = actor;
+      saveData(); renderConsents(); openConsentDetail(consent.id); showToast(`Onam durumu “${nextStatus}” olarak güncellendi.`);
     }
     if (event.target.id === "stockItemForm") {
       event.preventDefault();

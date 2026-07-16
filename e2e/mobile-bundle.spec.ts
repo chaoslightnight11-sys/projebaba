@@ -179,12 +179,21 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Durumu güncelle" }).click();
   await page.locator(".bottom-nav").getByRole("button", { name: "Stok", exact: true }).click();
   await expect(page.locator("#stockList").getByRole("button", { name: /Maske/ })).toContainText("5");
+  await page.locator(".bottom-nav").getByRole("button", { name: "Hastalar", exact: true }).click();
+  await page.locator("#patientList button.patient-card").filter({ hasText: "Zeynep Çelik" }).click();
+  await expect(page.locator("#modalBody")).toContainText("Kontrol");
+  await expect(page.locator("#modalBody")).toContainText("Malzeme reçetesi stoktan işlendi");
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
   await page.locator(".bottom-nav").getByRole("button", { name: "Randevu", exact: true }).click();
   await page.locator("#appointmentList .appointment-card").filter({ hasText: "Zeynep Çelik" }).click();
   await page.getByLabel("Durum").selectOption("PLANNED");
   await page.getByRole("button", { name: "Durumu güncelle" }).click();
   await page.locator(".bottom-nav").getByRole("button", { name: "Stok", exact: true }).click();
   await expect(page.locator("#stockList").getByRole("button", { name: /Maske/ })).toContainText("7");
+  await page.locator(".bottom-nav").getByRole("button", { name: "Hastalar", exact: true }).click();
+  await page.locator("#patientList button.patient-card").filter({ hasText: "Zeynep Çelik" }).click();
+  await expect(page.locator("#modalBody")).not.toContainText("Malzeme reçetesi stoktan işlendi");
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
   await page.locator(".bottom-nav").getByRole("button", { name: "Randevu", exact: true }).click();
   await page.getByRole("button", { name: "Sonraki ay" }).click();
   await expect(page.locator("#calendarMonthLabel")).not.toBeEmpty();
@@ -310,8 +319,19 @@ test("production Android can be reviewed without a password and keeps sample dat
   await expect(consent).toBeVisible();
   await consent.click();
   await expect(page.getByRole("heading", { name: "Ayşe Yılmaz" })).toBeVisible();
-  await page.getByRole("button", { name: "Klinikte imzalandı olarak işaretle" }).click();
+  await page.getByRole("button", { name: "Durumu değiştir" }).click();
+  await page.locator('#consentStatusForm select[name="status"]').selectOption("İmzalandı");
+  await page.locator('#consentStatusForm input[name="actor"]').fill("Ayşe Yılmaz");
+  await page.locator('#consentStatusForm textarea[name="note"]').fill("Klinikte tedavi öncesi imzalandı.");
+  await page.getByRole("button", { name: "Durumu kaydet" }).click();
   await expect(page.locator("#modalBody")).toContainText("İmzalandı");
+  await expect(page.locator("#modalBody")).toContainText("Durum geçmişi");
+  await page.getByRole("button", { name: "Durumu değiştir" }).click();
+  await expect(page.locator('#consentStatusForm select[name="status"] option')).toHaveCount(2);
+  await page.locator('#consentStatusForm select[name="status"]').selectOption("İptal edildi");
+  await page.locator('#consentStatusForm textarea[name="note"]').fill("Hasta tedavi planını değiştirdi; yeni sürüm hazırlanacak.");
+  await page.getByRole("button", { name: "Durumu kaydet" }).click();
+  await expect(page.locator("#modalBody")).toContainText("İptal edildi");
   await page.getByRole("button", { name: "Kapat", exact: true }).click();
   await page.getByRole("button", { name: "Hastalar", exact: true }).click();
   await expect(page.locator("#patientList").getByText("Ayşe Yılmaz", { exact: true })).toBeVisible();
@@ -320,6 +340,23 @@ test("production Android can be reviewed without a password and keeps sample dat
   await page.locator('#patientForm input[name="phone"]').fill("+90 555 000 11 22");
   await page.getByRole("button", { name: "Hastayı kaydet" }).click();
   await expect(page.locator("#patientList").getByText("İnceleme Hastası", { exact: true })).toBeVisible();
+  await page.locator(".bottom-nav").getByRole("button", { name: "Onam", exact: true }).click();
+  await page.getByRole("button", { name: "Yeni onam oluştur" }).click();
+  await page.locator('#consentForm select[name="patientId"]').selectOption({ label: "İnceleme Hastası" });
+  await page.locator('#consentForm select[name="form"]').selectOption("Genel tedavi onamı");
+  await page.getByRole("button", { name: "Onamı kaydet" }).click();
+  await expect(page.locator("#consentList").getByText("İnceleme Hastası", { exact: true })).toBeVisible();
+  await page.locator(".bottom-nav").getByRole("button", { name: "Hastalar", exact: true }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "İnceleme Hastası hastasını sil" }).click();
+  await page.locator(".bottom-nav").getByRole("button", { name: "Onam", exact: true }).click();
+  await expect(page.locator("#consentList").getByText("İnceleme Hastası", { exact: true })).toHaveCount(0);
+  await page.locator(".bottom-nav").getByRole("button", { name: "Diğer", exact: true }).click();
+  await page.getByRole("button", { name: /^Çöp Kutusu/ }).click();
+  await page.locator(".trash-record").filter({ hasText: "İnceleme Hastası" }).getByRole("button", { name: "Geri yükle" }).click();
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
+  await page.locator(".bottom-nav").getByRole("button", { name: "Onam", exact: true }).click();
+  await expect(page.locator("#consentList").getByText("İnceleme Hastası", { exact: true })).toBeVisible();
   const persisted = await page.evaluate(() => ({
     account: localStorage.getItem("clinicnova.localAccount"),
     patients: JSON.parse(localStorage.getItem("clinicnova.patients") || "[]") as Array<{ name?: string }>,
