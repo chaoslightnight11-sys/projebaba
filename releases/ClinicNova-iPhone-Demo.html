@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#f8fafc" />
     <meta name="color-scheme" content="light dark" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-OlvGKa6nuvDFyedRFaG0eDwzhRErgFyHw1up/JMNT6Y=' 'sha256-ZEZAk4cEZpsHBYHSTdKEGaQYBJZYZedEEVtQicXSGM0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self' https:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-OlvGKa6nuvDFyedRFaG0eDwzhRErgFyHw1up/JMNT6Y=' 'sha256-XHreAboMdiNzNad1nQfCWsErYV54RzX6CaufbeETeXM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self' https:" />
     <title>ClinicNova</title>
     <style>:root {
   color-scheme: light;
@@ -715,6 +715,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   let syncQueue = storage.get("clinicnova.syncQueue", []);
   let syncMap = storage.get("clinicnova.syncMap", {});
   let syncing = false;
+  let inFlightOperationIds = new Set();
   let syncTimer = null;
   let serverPermissions = storage.get("clinicnova.serverPermissions", null);
   if (demoMode) serverPermissions = null;
@@ -859,8 +860,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     if (demoMode || previewMode) return;
     const id = String(clientId);
     const pendingDelete = syncQueue.some((item) => item.entityType === entityType && item.clientId === id && item.action === "DELETE");
-    if (pendingDelete) syncQueue = syncQueue.filter((item) => !(item.entityType === entityType && item.clientId === id && item.action === "DELETE"));
-    const pending = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
+    if (pendingDelete) syncQueue = syncQueue.filter((item) => !(item.entityType === entityType && item.clientId === id && item.action === "DELETE" && !inFlightOperationIds.has(item.operationId)));
+    const pending = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE" && !item.attemptedAt && !inFlightOperationIds.has(item.operationId));
     if (pending) pending.payload = payload;
     else syncQueue.push({ operationId: operationId(), entityType, action: pendingDelete && syncMap[`${entityType}:${id}`] ? "UPDATE" : "CREATE", clientId: id, createdAt: new Date().toISOString(), payload });
     persistSyncState();
@@ -870,8 +871,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   function queueUpdate(entityType, clientId, payload) {
     if (demoMode || previewMode) return;
     const id = String(clientId);
-    const pendingCreate = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
+    const pendingCreate = syncQueue.find((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE" && !item.attemptedAt && !inFlightOperationIds.has(item.operationId));
+    const pendingUpdate = [...syncQueue].reverse().find((item) => item.entityType === entityType && item.clientId === id && item.action === "UPDATE" && !item.attemptedAt && !inFlightOperationIds.has(item.operationId));
     if (pendingCreate) pendingCreate.payload = { ...pendingCreate.payload, ...payload };
+    else if (pendingUpdate) pendingUpdate.payload = { ...pendingUpdate.payload, ...payload };
     else syncQueue.push({ operationId: operationId(), entityType, action: "UPDATE", clientId: id, createdAt: new Date().toISOString(), payload });
     persistSyncState();
     scheduleSync();
@@ -880,9 +883,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   function queueDelete(entityType, clientId, payload = {}) {
     if (demoMode || previewMode) return;
     const id = String(clientId);
-    const hadPendingCreate = syncQueue.some((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE");
-    syncQueue = syncQueue.filter((item) => !(item.entityType === entityType && item.clientId === id));
-    if (!hadPendingCreate || syncMap[`${entityType}:${id}`]) syncQueue.push({ operationId: operationId(), entityType, action: "DELETE", clientId: id, createdAt: new Date().toISOString(), payload });
+    const hadQueuedCreate = syncQueue.some((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE" && !item.attemptedAt && !inFlightOperationIds.has(item.operationId));
+    const hasAttemptedCreate = syncQueue.some((item) => item.entityType === entityType && item.clientId === id && item.action === "CREATE" && (item.attemptedAt || inFlightOperationIds.has(item.operationId)));
+    syncQueue = syncQueue.filter((item) => item.entityType !== entityType || item.clientId !== id || item.attemptedAt || inFlightOperationIds.has(item.operationId));
+    if (!hadQueuedCreate || hasAttemptedCreate || syncMap[`${entityType}:${id}`]) syncQueue.push({ operationId: operationId(), entityType, action: "DELETE", clientId: id, createdAt: new Date().toISOString(), payload });
     persistSyncState();
     scheduleSync();
   }
@@ -945,10 +949,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     return String(value || "").normalize("NFKC").trim().toLocaleLowerCase("tr-TR").replace(/\s+/g, " ");
   }
 
-  function applyLocalStockForAppointment(appointment, nextStatus) {
-    if (appointment.status === nextStatus) return { ok: true, message: "Randevu durumu güncellendi." };
+  function applyLocalStockForClinicalRecord(record, nextStatus, label) {
+    if (record.status === nextStatus) return { ok: true, message: `${label} durumu güncellendi.` };
     if (nextStatus === "COMPLETED") {
-      const recipes = stockRecipes.filter((recipe) => treatmentKey(recipe.treatmentType) === treatmentKey(appointment.treatment));
+      const recipes = stockRecipes.filter((recipe) => treatmentKey(recipe.treatmentType) === treatmentKey(record.treatment));
       const insufficient = recipes.find((recipe) => {
         const item = stockItems.find((entry) => Number(entry.id) === Number(recipe.itemId));
         return !item || Number(item.amount) < Number(recipe.quantity);
@@ -957,25 +961,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
         const item = stockItems.find((entry) => Number(entry.id) === Number(insufficient.itemId));
         return { ok: false, message: item ? `Stok yetersiz: ${item.name}. Gerekli ${insufficient.quantity} ${item.unit}, mevcut ${item.amount} ${item.unit}.` : "Reçetedeki stok ürünü bulunamadı." };
       }
-      appointment.stockUsage = recipes.map((recipe) => ({ itemId: Number(recipe.itemId), quantity: Number(recipe.quantity) }));
-      for (const usage of appointment.stockUsage) {
+      record.stockUsage = recipes.map((recipe) => ({ itemId: Number(recipe.itemId), quantity: Number(recipe.quantity) }));
+      for (const usage of record.stockUsage) {
         const item = stockItems.find((entry) => Number(entry.id) === usage.itemId);
         item.amount = Number(item.amount) - usage.quantity;
-        (item.movements ||= []).unshift({ id: Date.now() + Math.random(), type: "OUT", quantity: usage.quantity, note: `${appointment.treatment} tamamlandı · otomatik sarf`, appointmentId: appointment.id, automatic: true, date: "Şimdi" });
+        (item.movements ||= []).unshift({ id: Date.now() + Math.random(), type: "OUT", quantity: usage.quantity, note: `${record.treatment} tamamlandı · otomatik sarf`, clinicalRecordId: record.id, automatic: true, date: "Şimdi" });
       }
-      return { ok: true, message: recipes.length ? "Randevu tamamlandı; reçetedeki malzemeler stoktan düşüldü." : "Randevu tamamlandı. Bu tedavi için malzeme reçetesi tanımlı değil." };
+      return { ok: true, message: recipes.length ? `${label} tamamlandı; reçetedeki malzemeler stoktan düşüldü.` : `${label} tamamlandı. Bu işlem için malzeme reçetesi tanımlı değil.` };
     }
-    if (appointment.status === "COMPLETED" && Array.isArray(appointment.stockUsage)) {
-      for (const usage of appointment.stockUsage) {
+    if (record.status === "COMPLETED" && Array.isArray(record.stockUsage)) {
+      for (const usage of record.stockUsage) {
         const item = stockItems.find((entry) => Number(entry.id) === Number(usage.itemId));
         if (!item) continue;
         item.amount = Number(item.amount) + Number(usage.quantity);
-        (item.movements ||= []).unshift({ id: Date.now() + Math.random(), type: "IN", quantity: Number(usage.quantity), note: `${appointment.treatment} geri alındı · otomatik iade`, appointmentId: appointment.id, automatic: true, date: "Şimdi" });
+        (item.movements ||= []).unshift({ id: Date.now() + Math.random(), type: "IN", quantity: Number(usage.quantity), note: `${record.treatment} geri alındı · otomatik iade`, clinicalRecordId: record.id, automatic: true, date: "Şimdi" });
       }
-      appointment.stockUsage = [];
+      record.stockUsage = [];
       return { ok: true, message: "Tamamlama geri alındı; kullanılan malzemeler stoğa iade edildi." };
     }
-    return { ok: true, message: "Randevu durumu güncellendi." };
+    return { ok: true, message: `${label} durumu güncellendi.` };
+  }
+
+  const applyLocalStockForAppointment = (appointment, nextStatus) => applyLocalStockForClinicalRecord(appointment, nextStatus, "Randevu");
+  const applyLocalStockForTreatment = (treatment, nextStatus) => applyLocalStockForClinicalRecord(treatment, nextStatus, "Tedavi");
+
+  function prepareRestoredClinicalRecords(records, applyStock) {
+    const restored = JSON.parse(JSON.stringify(records || []));
+    const applied = [];
+    for (const record of restored) {
+      if (record.status !== "COMPLETED") continue;
+      record.status = "STARTED";
+      const result = applyStock(record, "COMPLETED");
+      record.status = "COMPLETED";
+      if (result.ok) { applied.push(record); continue; }
+      for (const previous of applied.reverse()) applyStock(previous, "CANCELLED");
+      return { ok: false, message: result.message, records: [] };
+    }
+    return { ok: true, records: restored };
   }
 
   function treatmentPlanPayload(plan) {
@@ -1799,7 +1821,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     syncing = true;
     updateNetworkBadge();
     const operations = syncQueue.filter((item) => canSyncEntity(item.entityType)).slice(0, 50);
-    window.ClinicNovaNative.sync(serverUrl, JSON.stringify({ deviceId, operations }));
+    const attemptedAt = new Date().toISOString();
+    operations.forEach((item) => { item.attemptedAt ||= attemptedAt; });
+    inFlightOperationIds = new Set(operations.map((item) => item.operationId));
+    persistSyncState();
+    try {
+      window.ClinicNovaNative.sync(serverUrl, JSON.stringify({ deviceId, operations }));
+    } catch {
+      syncing = false;
+      inFlightOperationIds.clear();
+      updateNetworkBadge();
+      scheduleSync(30_000);
+    }
   }
 
   function applyServerSnapshot(snapshot) {
@@ -1835,6 +1868,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     };
     const pendingIds = (type) => new Set(syncQueue.filter((item) => item.entityType === type).map((item) => String(item.clientId)));
     const retainPending = (items, type) => items.filter((item) => pendingIds(type).has(String(item.id)));
+    const mergePending = (pending, type, serverItems) => {
+      const pendingLocalIds = new Set(pending.map((item) => String(item.id)));
+      const pendingServerIds = new Set(pending.map((item) => syncMap[`${type}:${item.id}`]).filter(Boolean).map(String));
+      return [...pending, ...serverItems.filter((item) => !pendingLocalIds.has(String(item.id)) && !pendingServerIds.has(String(item.serverId)))];
+    };
     const mapPatientReference = (item) => ({ ...item, patientId: localIdForServer("PATIENT", item.patientId) });
 
     const pendingPatients = retainPending(state.patients, "PATIENT");
@@ -1853,21 +1891,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     const pendingRecalls = retainPending(recalls, "RECALL").map(mapPatientReference);
     const pendingLeads = retainPending(hotLeads, "LEAD");
 
-    state.patients = [...pendingPatients, ...collections.PATIENT];
-    state.appointments = [...pendingAppointments, ...collections.APPOINTMENT];
-    state.transactions = [...pendingPayments, ...collections.PAYMENT];
-    treatmentPlans = [...pendingPlans, ...collections.TREATMENT_PLAN];
-    stockItems = [...pendingStocks, ...collections.STOCK_ITEM];
-    stockRecipes = [...pendingRecipes, ...collections.STOCK_RECIPE];
-    clinicDoctors = [...pendingDoctors, ...collections.DOCTOR];
-    treatments = [...pendingTreatments, ...collections.TREATMENT];
-    staffRecords = [...pendingStaff, ...collections.STAFF];
-    consentRecords = [...pendingConsents, ...collections.CONSENT];
-    surveys = [...pendingSurveys, ...collections.SURVEY];
-    surveyResponses = [...pendingSurveyResponses, ...collections.SURVEY_RESPONSE];
-    communicationLog = [...pendingCommunication, ...collections.COMMUNICATION];
-    recalls = [...pendingRecalls, ...collections.RECALL];
-    hotLeads = [...pendingLeads, ...collections.LEAD];
+    state.patients = mergePending(pendingPatients, "PATIENT", collections.PATIENT);
+    state.appointments = mergePending(pendingAppointments, "APPOINTMENT", collections.APPOINTMENT);
+    state.transactions = mergePending(pendingPayments, "PAYMENT", collections.PAYMENT);
+    treatmentPlans = mergePending(pendingPlans, "TREATMENT_PLAN", collections.TREATMENT_PLAN);
+    stockItems = mergePending(pendingStocks, "STOCK_ITEM", collections.STOCK_ITEM);
+    stockRecipes = mergePending(pendingRecipes, "STOCK_RECIPE", collections.STOCK_RECIPE);
+    clinicDoctors = mergePending(pendingDoctors, "DOCTOR", collections.DOCTOR);
+    treatments = mergePending(pendingTreatments, "TREATMENT", collections.TREATMENT);
+    staffRecords = mergePending(pendingStaff, "STAFF", collections.STAFF);
+    consentRecords = mergePending(pendingConsents, "CONSENT", collections.CONSENT);
+    surveys = mergePending(pendingSurveys, "SURVEY", collections.SURVEY);
+    surveyResponses = mergePending(pendingSurveyResponses, "SURVEY_RESPONSE", collections.SURVEY_RESPONSE);
+    communicationLog = mergePending(pendingCommunication, "COMMUNICATION", collections.COMMUNICATION);
+    recalls = mergePending(pendingRecalls, "RECALL", collections.RECALL);
+    hotLeads = mergePending(pendingLeads, "LEAD", collections.LEAD);
     const syncedTreatmentHistory = {};
     for (const item of treatments) (syncedTreatmentHistory[item.patientId] ||= []).push({ id: item.id, date: item.date, treatment: item.treatment, doctor: item.doctor, note: item.description || statusLabel(item.status), syncedTreatment: true });
     for (const [patientId, entries] of Object.entries(state.treatmentHistory)) {
@@ -1888,6 +1926,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
   window.ClinicNovaSyncResult = (status, responseText) => {
     syncing = false;
+    inFlightOperationIds.clear();
     let response = {};
     try { response = JSON.parse(responseText || "{}"); } catch { response = {}; }
     if (status === 401 || status === 403 || (status === 200 && !Array.isArray(response.results))) {
@@ -2080,11 +2119,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (!trashItem) return;
       const payload = trashItem.payload;
       if (trashItem.kind === "patientBundle") {
+        const restoredAppointments = prepareRestoredClinicalRecords(payload.appointments, applyLocalStockForAppointment);
+        if (!restoredAppointments.ok) return showToast(restoredAppointments.message);
+        const restoredTreatments = prepareRestoredClinicalRecords(payload.treatments, applyLocalStockForTreatment);
+        if (!restoredTreatments.ok) {
+          for (const appointment of restoredAppointments.records.filter((item) => item.status === "COMPLETED")) applyLocalStockForAppointment(appointment, "CANCELLED");
+          return showToast(restoredTreatments.message);
+        }
         state.patients.unshift(payload.patient);
-        state.appointments.push(...payload.appointments);
+        state.appointments.push(...restoredAppointments.records);
         state.transactions.push(...payload.transactions);
         treatmentPlans.push(...(payload.treatmentPlans || []));
-        treatments.push(...(payload.treatments || []));
+        treatments.push(...restoredTreatments.records);
         recalls.push(...(payload.recalls || []));
         surveyResponses.push(...(payload.surveyResponses || []));
         communicationLog.push(...(payload.communication || []));
@@ -2092,24 +2138,45 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
         if (payload.treatmentHistory?.length) state.treatmentHistory[payload.patient.id] = payload.treatmentHistory;
         if (payload.media?.length) state.patientMedia[payload.patient.id] = payload.media;
         queueCreate("PATIENT", payload.patient.id, patientPayload(payload.patient));
-        payload.appointments.forEach((item) => queueCreate("APPOINTMENT", item.id, appointmentPayload(item)));
+        restoredAppointments.records.forEach((item) => queueCreate("APPOINTMENT", item.id, appointmentPayload(item)));
         payload.transactions.filter((item) => item.patientId).forEach((item) => queueCreate("PAYMENT", item.id, paymentPayload(item)));
         (payload.treatmentPlans || []).forEach((item) => queueCreate("TREATMENT_PLAN", item.id, treatmentPlanPayload(item)));
-        (payload.treatments || []).forEach((item) => queueCreate("TREATMENT", item.id, treatmentPayload(item)));
+        restoredTreatments.records.forEach((item) => queueCreate("TREATMENT", item.id, treatmentPayload(item)));
         (payload.recalls || []).forEach((item) => queueCreate("RECALL", item.id, recallPayload(item)));
         (payload.surveyResponses || []).forEach((item) => queueCreate("SURVEY_RESPONSE", item.id, surveyResponsePayload(item)));
         (payload.communication || []).forEach((item) => queueCreate("COMMUNICATION", item.id, communicationPayload(item)));
       }
-      if (trashItem.kind === "appointment") { state.appointments.push(payload); queueCreate("APPOINTMENT", payload.id, appointmentPayload(payload)); }
+      if (trashItem.kind === "appointment") {
+        const restored = JSON.parse(JSON.stringify(payload));
+        if (restored.status === "COMPLETED") {
+          restored.status = "STARTED";
+          const stockResult = applyLocalStockForAppointment(restored, "COMPLETED");
+          if (!stockResult.ok) return showToast(stockResult.message);
+          restored.status = "COMPLETED";
+        }
+        state.appointments.push(restored); queueCreate("APPOINTMENT", restored.id, appointmentPayload(restored));
+      }
       if (trashItem.kind === "transaction") { state.transactions.unshift(payload); if (payload.patientId) queueCreate("PAYMENT", payload.id, paymentPayload(payload)); }
       if (trashItem.kind === "treatmentHistory") {
+        let restoredTreatment = payload.treatmentRecord ? JSON.parse(JSON.stringify(payload.treatmentRecord)) : null;
+        if (restoredTreatment?.status === "COMPLETED") {
+          restoredTreatment.status = "STARTED";
+          const stockResult = applyLocalStockForTreatment(restoredTreatment, "COMPLETED");
+          if (!stockResult.ok) return showToast(stockResult.message);
+          restoredTreatment.status = "COMPLETED";
+        }
         (state.treatmentHistory[payload.patientId] ||= []).splice(payload.index, 0, payload.item);
-        if (payload.treatmentRecord) { treatments.unshift(payload.treatmentRecord); queueCreate("TREATMENT", payload.treatmentRecord.id, treatmentPayload(payload.treatmentRecord)); }
+        if (restoredTreatment) { treatments.unshift(restoredTreatment); queueCreate("TREATMENT", restoredTreatment.id, treatmentPayload(restoredTreatment)); }
       }
       if (trashItem.kind === "media") (state.patientMedia[payload.patientId] ||= []).unshift(payload.item);
       if (trashItem.kind === "treatmentPlans") { treatmentPlans.unshift(payload); queueCreate("TREATMENT_PLAN", payload.id, treatmentPlanPayload(payload)); }
       if (trashItem.kind === "hotLeads") { hotLeads.unshift(payload); queueCreate("LEAD", payload.id, leadPayload(payload)); }
-      if (trashItem.kind === "stockItems") { stockItems.unshift(payload); queueCreate("STOCK_ITEM", payload.id, stockItemPayload(payload)); }
+      if (trashItem.kind === "stockItems") {
+        const restored = { ...payload }; delete restored.linkedRecipes; delete restored.linkedResponses;
+        stockItems.unshift(restored); queueCreate("STOCK_ITEM", restored.id, stockItemPayload(restored));
+        for (const recipe of payload.linkedRecipes || []) { stockRecipes.unshift(recipe); queueCreate("STOCK_RECIPE", recipe.id, stockRecipePayload(recipe)); }
+        for (const offer of restored.offers || []) queueCreate("STOCK_OFFER", offer.id, { itemId: String(restored.id), seller: offer.seller, unitPrice: offer.unitPrice, shippingPrice: offer.shippingPrice || 0, productUrl: offer.productUrl, inStock: offer.inStock !== false });
+      }
       if (trashItem.kind === "stockOffer") {
         const stockItem = stockItems.find((item) => Number(item.id) === Number(payload.stockId));
         if (stockItem) {
@@ -2119,9 +2186,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       }
       if (trashItem.kind === "communicationLog") { communicationLog.unshift(payload); queueCreate("COMMUNICATION", payload.id, communicationPayload(payload)); }
       if (trashItem.kind === "consentRecords") { consentRecords.unshift(payload); queueCreate("CONSENT", payload.id, consentPayload(payload)); }
-      if (trashItem.kind === "treatments") { treatments.unshift(payload); queueCreate("TREATMENT", payload.id, treatmentPayload(payload)); }
+      if (trashItem.kind === "treatments") {
+        const restored = { ...payload }; delete restored.linkedRecipes; delete restored.linkedResponses;
+        if (restored.status === "COMPLETED") {
+          restored.status = "STARTED";
+          const stockResult = applyLocalStockForTreatment(restored, "COMPLETED");
+          if (!stockResult.ok) return showToast(stockResult.message);
+          restored.status = "COMPLETED";
+        }
+        treatments.unshift(restored); queueCreate("TREATMENT", restored.id, treatmentPayload(restored));
+      }
       if (trashItem.kind === "staffRecords") { staffRecords.unshift(payload); queueCreate("STAFF", payload.id, staffPayload(payload)); }
-      if (trashItem.kind === "surveys") { surveys.unshift(payload); queueCreate("SURVEY", payload.id, surveyPayload(payload)); }
+      if (trashItem.kind === "surveys") {
+        const restored = { ...payload }; delete restored.linkedRecipes; delete restored.linkedResponses;
+        surveys.unshift(restored); queueCreate("SURVEY", restored.id, surveyPayload(restored));
+        for (const response of payload.linkedResponses || []) { surveyResponses.unshift(response); queueCreate("SURVEY_RESPONSE", response.id, surveyResponsePayload(response)); }
+      }
       if (trashItem.kind === "recalls") { recalls.unshift(payload); queueCreate("RECALL", payload.id, recallPayload(payload)); }
       trashItems = trashItems.filter((item) => Number(item.id) !== trashId);
       saveData(); renderAll(); openModule("Çöp Kutusu"); showToast("Kayıt geri yüklendi."); return;
@@ -2143,7 +2223,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (!moduleByKind[kind] || !window.confirm("Bu kayıt silinsin mi?")) return;
       const sourceByKind = { treatmentPlans, treatments, staffRecords, hotLeads, stockItems, communicationLog, consentRecords, surveys, recalls };
       const deletedRecord = sourceByKind[kind].find((item) => item.id === id);
-      if (deletedRecord) moveToTrash(kind, deletedRecord.name || deletedRecord.fullName || deletedRecord.title || deletedRecord.patient || deletedRecord.form || deletedRecord.reason || "Silinen kayıt", deletedRecord);
+      const linkedResponses = kind === "surveys" ? surveyResponses.filter((item) => Number(item.surveyId) === id) : [];
+      const linkedRecipes = kind === "stockItems" ? stockRecipes.filter((item) => Number(item.itemId) === id) : [];
+      const trashPayload = deletedRecord ? JSON.parse(JSON.stringify({ ...deletedRecord, linkedResponses, linkedRecipes })) : null;
+      if (deletedRecord?.status === "COMPLETED" && kind === "treatments") applyLocalStockForTreatment(deletedRecord, "CANCELLED");
+      if (deletedRecord) moveToTrash(kind, deletedRecord.name || deletedRecord.fullName || deletedRecord.title || deletedRecord.patient || deletedRecord.form || deletedRecord.reason || "Silinen kayıt", trashPayload);
       if (kind === "treatmentPlans") treatmentPlans = treatmentPlans.filter((item) => item.id !== id);
       if (kind === "treatments") { treatments = treatments.filter((item) => item.id !== id); queueDelete("TREATMENT", id); }
       if (kind === "staffRecords") { staffRecords = staffRecords.filter((item) => item.id !== id); queueDelete("STAFF", id); }
@@ -2152,7 +2236,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (kind === "communicationLog") communicationLog = communicationLog.filter((item) => item.id !== id);
       if (kind === "consentRecords") consentRecords = consentRecords.filter((item) => item.id !== id);
       if (kind === "surveys") {
-        const linkedResponses = surveyResponses.filter((item) => Number(item.surveyId) === id);
         linkedResponses.forEach((item) => queueDelete("SURVEY_RESPONSE", item.id));
         surveyResponses = surveyResponses.filter((item) => Number(item.surveyId) !== id);
         surveys = surveys.filter((item) => item.id !== id); queueDelete("SURVEY", id);
@@ -2162,7 +2245,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (kind === "communicationLog") queueDelete("COMMUNICATION", id);
       if (kind === "consentRecords") queueDelete("CONSENT", id);
       if (kind === "treatmentPlans") queueDelete("TREATMENT_PLAN", id);
-      if (kind === "stockItems") queueDelete("STOCK_ITEM", id);
+      if (kind === "stockItems") {
+        linkedRecipes.forEach((item) => queueDelete("STOCK_RECIPE", item.id));
+        (deletedRecord?.offers || []).forEach((item) => queueDelete("STOCK_OFFER", item.id));
+        stockRecipes = stockRecipes.filter((item) => Number(item.itemId) !== id);
+        queueDelete("STOCK_ITEM", id);
+      }
       const originalOpener = modalOpener;
       saveData();
       if (kind === "hotLeads") renderDashboard();
@@ -2181,8 +2269,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       const linkedRecalls = recalls.filter((item) => Number(item.patientId) === patientId);
       const linkedSurveyResponses = surveyResponses.filter((item) => Number(item.patientId) === patientId);
       const linkedCommunication = communicationLog.filter((item) => Number(item.patientId) === patientId);
+      const patientBundle = JSON.parse(JSON.stringify({ patient, appointments: linkedAppointments, transactions: linkedTransactions, treatmentPlans: linkedPlans, consents: linkedConsents, treatments: linkedTreatments, recalls: linkedRecalls, surveyResponses: linkedSurveyResponses, communication: linkedCommunication, treatmentHistory: state.treatmentHistory[patientId] || [], media: state.patientMedia[patientId] || [] }));
       linkedAppointments.filter((item) => item.status === "COMPLETED").forEach((item) => { applyLocalStockForAppointment(item, "CANCELLED"); item.status = "CANCELLED"; });
-      moveToTrash("patientBundle", patient.name, { patient, appointments: linkedAppointments, transactions: linkedTransactions, treatmentPlans: linkedPlans, consents: linkedConsents, treatments: linkedTreatments, recalls: linkedRecalls, surveyResponses: linkedSurveyResponses, communication: linkedCommunication, treatmentHistory: state.treatmentHistory[patientId] || [], media: state.patientMedia[patientId] || [] });
+      linkedTreatments.filter((item) => item.status === "COMPLETED").forEach((item) => applyLocalStockForTreatment(item, "CANCELLED"));
+      moveToTrash("patientBundle", patient.name, patientBundle);
       linkedAppointments.forEach((item) => queueDelete("APPOINTMENT", item.id));
       linkedTransactions.forEach((item) => queueDelete("PAYMENT", item.id));
       linkedPlans.forEach((item) => queueDelete("TREATMENT_PLAN", item.id));
@@ -2209,8 +2299,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       const appointmentId = Number(target.dataset.deleteAppointment);
       if (!window.confirm("Bu randevu silinsin mi?")) return;
       const deletedAppointment = state.appointments.find((item) => item.id === appointmentId);
+      const deletedAppointmentSnapshot = deletedAppointment ? JSON.parse(JSON.stringify(deletedAppointment)) : null;
       if (deletedAppointment?.status === "COMPLETED") { applyLocalStockForAppointment(deletedAppointment, "CANCELLED"); deletedAppointment.status = "CANCELLED"; }
-      if (deletedAppointment) moveToTrash("appointment", `${patientById(deletedAppointment.patientId)?.name || "Hasta"} randevusu`, deletedAppointment);
+      if (deletedAppointmentSnapshot) moveToTrash("appointment", `${patientById(deletedAppointmentSnapshot.patientId)?.name || "Hasta"} randevusu`, deletedAppointmentSnapshot);
       if (deletedAppointment) queueDelete("APPOINTMENT", appointmentId);
       state.appointments = state.appointments.filter((item) => item.id !== appointmentId);
       if (deletedAppointment) state.treatmentHistory[deletedAppointment.patientId] = (state.treatmentHistory[deletedAppointment.patientId] || []).filter((item) => Number(item.appointmentId) !== appointmentId);
@@ -2253,7 +2344,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (!window.confirm("Bu tedavi geçmişi kaydı silinsin mi?")) return;
       const deletedTreatment = (state.treatmentHistory[patientId] || [])[index];
       const syncedTreatmentRecord = deletedTreatment?.id ? treatments.find((item) => Number(item.id) === Number(deletedTreatment.id)) : null;
-      if (deletedTreatment) moveToTrash("treatmentHistory", `${patientById(patientId)?.name || "Hasta"} · ${deletedTreatment.treatment}`, { patientId, index, item: deletedTreatment, treatmentRecord: syncedTreatmentRecord });
+      const deletedTreatmentPayload = deletedTreatment ? JSON.parse(JSON.stringify({ patientId, index, item: deletedTreatment, treatmentRecord: syncedTreatmentRecord })) : null;
+      if (syncedTreatmentRecord?.status === "COMPLETED") applyLocalStockForTreatment(syncedTreatmentRecord, "CANCELLED");
+      if (deletedTreatmentPayload) moveToTrash("treatmentHistory", `${patientById(patientId)?.name || "Hasta"} · ${deletedTreatment.treatment}`, deletedTreatmentPayload);
       state.treatmentHistory[patientId] = (state.treatmentHistory[patientId] || []).filter((_, itemIndex) => itemIndex !== index);
       if (deletedTreatment?.id) { treatments = treatments.filter((item) => Number(item.id) !== Number(deletedTreatment.id)); queueDelete("TREATMENT", deletedTreatment.id); }
       saveData(); openPatientDetail(patientId); showToast("Tedavi kaydı silindi."); return;
@@ -2427,9 +2520,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     }
     if (event.target.id === "treatmentForm") {
       event.preventDefault(); const form = new FormData(event.target); const patient = patientById(form.get("patientId"));
-      const record = { id: Date.now(), patientId: patient?.id, patient: patient?.name || "", doctor: String(form.get("doctor") || ""), tooth: String(form.get("tooth") || ""), treatment: String(form.get("treatment") || "").trim(), description: String(form.get("description") || "").trim(), fee: Number(form.get("fee")), status: String(form.get("status") || "COMPLETED"), date: String(form.get("date") || todayIso), branch: currentClinicName() };
+      const requestedStatus = String(form.get("status") || "COMPLETED");
+      const record = { id: Date.now(), patientId: patient?.id, patient: patient?.name || "", doctor: String(form.get("doctor") || ""), tooth: String(form.get("tooth") || ""), treatment: String(form.get("treatment") || "").trim(), description: String(form.get("description") || "").trim(), fee: Number(form.get("fee")), status: requestedStatus === "COMPLETED" ? "STARTED" : requestedStatus, date: String(form.get("date") || todayIso), branch: currentClinicName() };
       if (!patient || record.treatment.length < 2 || !record.doctor || !Number.isFinite(record.fee) || record.fee < 0) return showToast("Tedavi bilgilerini kontrol edin.");
-      treatments.unshift(record); queueCreate("TREATMENT", record.id, treatmentPayload(record)); saveData(); openModule("Gerçekleşen tedaviler"); showToast("Tedavi kaydı eklendi."); return;
+      const stockResult = applyLocalStockForTreatment(record, requestedStatus);
+      if (!stockResult.ok) return showToast(stockResult.message);
+      record.status = requestedStatus;
+      treatments.unshift(record); queueCreate("TREATMENT", record.id, treatmentPayload(record)); saveData(); openModule("Gerçekleşen tedaviler"); showToast(stockResult.message); return;
     }
     if (event.target.id === "staffForm") {
       event.preventDefault(); const form = new FormData(event.target); const record = { id: Date.now(), fullName: String(form.get("fullName") || "").trim(), roleLabel: String(form.get("roleLabel") || "").trim(), phone: String(form.get("phone") || "").trim(), email: String(form.get("email") || "").trim().toLowerCase(), workingHours: String(form.get("workingHours") || "").trim(), compensation: String(form.get("compensation") || "").trim(), active: form.get("active") === "on" };
@@ -2464,8 +2561,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       if (!patient || treatment.length < 2 || !doctor || note.length < 3 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return showToast("Tedavi, tarih, hekim ve not bilgilerini kontrol edin.");
       const recordId = Date.now();
       const record = { id: recordId, date: new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`)), treatment, doctor, note, manual: true };
+      const treatmentRecord = { id: recordId, patientId: patient.id, patient: patient.name, doctor, tooth: "", treatment, description: note, fee: 0, paymentPlan: null, status: "STARTED", date, branch: currentClinicName() };
+      const stockResult = applyLocalStockForTreatment(treatmentRecord, "COMPLETED");
+      if (!stockResult.ok) return showToast(stockResult.message);
+      treatmentRecord.status = "COMPLETED";
       (state.treatmentHistory[patient.id] ||= []).unshift(record);
-      const treatmentRecord = { id: recordId, patientId: patient.id, patient: patient.name, doctor, tooth: "", treatment, description: note, fee: 0, paymentPlan: null, status: "COMPLETED", date, branch: currentClinicName() };
       treatments.unshift(treatmentRecord); queueCreate("TREATMENT", treatmentRecord.id, treatmentPayload(treatmentRecord));
       patient.lastVisit = date === todayIso ? "Bugün" : patient.lastVisit;
       saveData(); openPatientDetail(patient.id); showToast("Tedavi geçmişine kayıt eklendi."); return;

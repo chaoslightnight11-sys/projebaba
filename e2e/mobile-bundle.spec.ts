@@ -28,6 +28,36 @@ test("iPhone file preview never exposes the login gate when scripts are blocked"
   await context.close();
 });
 
+test("a failed mobile update keeps one local record instead of adding its server twin", async ({ page }) => {
+  await page.addInitScript(() => {
+    const values = new Map<string, string>();
+    values.set("clinicnova.localDataMigrated", JSON.stringify(true));
+    values.set("clinicnova.deviceId", JSON.stringify("android-regression-device"));
+    values.set("clinicnova.patients", JSON.stringify([{ id: 123, name: "Yerel Düzenleme", phone: "+90 555 000 00 00", email: "", tag: "ACTIVE", color: 0 }]));
+    values.set("clinicnova.syncMap", JSON.stringify({ "PATIENT:123": "server-patient-1" }));
+    values.set("clinicnova.syncQueue", JSON.stringify([{ operationId: "operation-failed-update", entityType: "PATIENT", action: "UPDATE", clientId: "123", createdAt: new Date().toISOString(), payload: { name: "Yerel Düzenleme", phone: "+90 555 000 00 00" } }]));
+    Object.assign(window, {
+      CLINICNOVA_MOBILE_CONFIG: { mode: "production", serverUrl: "" },
+      __clinicNovaNativeValues: values,
+      ClinicNovaNative: { storage: { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) } }
+    });
+  });
+  await page.goto(mobileUrl);
+  await page.evaluate(() => {
+    const callback = (window as typeof window & { ClinicNovaSyncResult: (status: number, body: string) => void }).ClinicNovaSyncResult;
+    callback(200, JSON.stringify({
+      results: [{ operationId: "operation-failed-update", status: "failed", error: "Geçici çakışma" }], synced: 0, failed: 1,
+      snapshot: { permissions: { patients: true }, patients: [{ id: 999, serverId: "server-patient-1", name: "Sunucu Kopyası", phone: "+90 555 000 00 00", email: "", tag: "ACTIVE", color: 1 }], appointments: [], transactions: [], treatmentPlans: [], stockItems: [], stockRecipes: [], doctors: [], treatments: [], staff: [], consents: [], surveys: [], surveyResponses: [], communication: [], recalls: [], leads: [], clinicConfig: { clinicName: "Test Klinik", chairs: [] } }
+    }));
+  });
+  const storedPatients = await page.evaluate(() => {
+    const values = (window as typeof window & { __clinicNovaNativeValues: Map<string, string> }).__clinicNovaNativeValues;
+    return JSON.parse(values.get("clinicnova.patients") || "[]");
+  });
+  expect(storedPatients).toHaveLength(1);
+  expect(storedPatients[0].name).toBe("Yerel Düzenleme");
+});
+
 test("bundled Android interface works offline", async ({ page }) => {
   test.setTimeout(60_000);
   const errors: string[] = [];
