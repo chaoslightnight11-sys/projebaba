@@ -27,15 +27,17 @@ Tarayıcı güvenlik modeli yerel TCP/UDP keşfine izin vermediği için bilgisa
 - Misafir izolasyonu kullanan Wi-Fi ağları cihazların birbirini görmesini engelleyebilir. Bu durumda klinik personeli ağı veya aynı LAN kullanılmalıdır.
 - Eşleştirme kodu şifreleme anahtarını içerir. Hasta bilgisinden ayrı, güvenli biçimde paylaşılmalı ve mesajlaşma grubunda tutulmamalıdır.
 
-## Otomatik randevu mesajları
+## Randevu mesajı hatırlatmaları
 
-Hasta takibi ekranında 1 hafta ve 1 gün hatırlatmaları ayrı ayrı açılabilir. Klinik, HTTPS mesaj sağlayıcı webhook adresini ve anahtarını girer; anahtar cihazın şifreli kasasında tutulur ve yalnız eşleştirilmiş klinik cihazlarına şifreli eşitlemeyle aktarılır.
+Hasta takibi ekranında 1 hafta ve 1 gün hatırlatmaları ayrı ayrı açılabilir. Zamanı geldiğinde ClinicNova hazır mesaj metnini yerel olarak oluşturur ve uygulamanın bildirim merkezinde gösterir.
 
-- Aynı anda yalnız seçilen gönderici cihaz kuyruğu çalıştırır.
-- Her randevu/zaman çifti sabit bir `Idempotency-Key` ile gönderilir. Sağlayıcı bu anahtarı tekrar işleme almamalıdır.
-- Başarısız teslimatlar aynı kimlikle yeniden denenir; başarılı teslimat ikinci kez gönderilmez.
-- Hasta mesajının ulaşması internet ve klinik tarafından yapılandırılmış WhatsApp/SMS sağlayıcısı gerektirir. Merkezi ClinicNova veri sunucusu gerekmez.
-- iOS arka plan çalışmasını işletim sistemi sınırlar. Yalnız telefon kullanılan kliniklerde gönderici iPhone uygulaması düzenli açılmalıdır; kesintisiz otomasyon için açık kalan Windows veya macOS cihazı gönderici seçilmelidir.
+- Personel **Metni kopyala** ile mesajı panoya alabilir veya **WhatsApp'ta aç** ile hastanın numarasına hazırlanmış WhatsApp konuşmasını açabilir.
+- WhatsApp gönderme düğmesine son kez personel basar; uygulama izinsiz veya arka planda mesaj göndermez.
+- Personel gönderimden sonra **Gönderildi** seçeneğini işaretler ve işlem iletişim geçmişine eklenir.
+- Her randevu/zaman çifti sabit kimliğe sahiptir; aynı klinik cihazlarında birden fazla mesaj taslağı oluşmaz.
+- Randevu iptal edilir, tamamlanır, silinir veya tarihi değişirse bekleyen eski taslak temizlenir.
+- API anahtarı, webhook, ücretli mesaj sağlayıcısı ya da WhatsApp Business hesabı gerekmez. Veriler ve mesaj taslakları eşleştirilmiş cihazlar arasında şifreli eşitlenir.
+- İşletim sistemi uygulamayı tamamen durdurduğunda kontrol yapılamaz. ClinicNova açıldığında gecikmeden yeniden kontrol eder; açık Windows/macOS uygulaması veya düzenli kullanılan telefon yeterlidir.
 
 ## Tedavi before/after fotoğrafları
 

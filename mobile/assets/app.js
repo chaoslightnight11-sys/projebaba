@@ -128,7 +128,8 @@
   let surveys = localCollection("clinicnova.surveys", []);
   let surveyResponses = localCollection("clinicnova.surveyResponses", []);
   let recalls = localCollection("clinicnova.recalls", []);
-  let reminderSettings = storage.get("clinicnova.reminderSettings", { id: "clinic", enabled: false, weekEnabled: true, dayEnabled: true, channel: "WHATSAPP", endpoint: "", token: "", senderDeviceId: "", template: "Merhaba {{name}}, {{date}} {{time}} tarihindeki {{treatment}} randevunuzu hatırlatırız. {{clinic}}" });
+  const defaultReminderSettings = { id: "clinic", enabled: false, weekEnabled: true, dayEnabled: true, template: "Merhaba {{name}}, {{date}} {{time}} tarihindeki {{treatment}} randevunuzu hatırlatırız. {{clinic}}" };
+  let reminderSettings = { ...defaultReminderSettings, ...storage.get("clinicnova.reminderSettings", {}) };
   let reminderDeliveries = localCollection("clinicnova.reminderDeliveries", []);
   let trashItems = demoMode || localDataWasMigrated ? storage.get("clinicnova.trashItems", []) : [];
   let legacyOfferId = Date.now();
@@ -320,6 +321,10 @@
       recalls = document.recalls || [];
       reminderSettings = document.reminderSettings?.[0] || reminderSettings;
       reminderDeliveries = document.reminderDeliveries || [];
+      if (reminderDeliveries.some((item) => item.status === "READY")) {
+        storage.set("clinicnova.notificationsRead", false);
+        if ($("#notificationDot")) $("#notificationDot").hidden = false;
+      }
       trashItems = document.trashItems || [];
       const clinic = document.clinicConfig?.[0];
       if (clinic) {
@@ -382,37 +387,66 @@
     const current = new Date(`${localDate(new Date())}T12:00:00`);
     return Math.round((target.getTime() - current.getTime()) / 86_400_000);
   }
+  function whatsappPhone(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+  function whatsappReminderUrl(item) {
+    const phone = whatsappPhone(item?.phone);
+    return phone ? `https://wa.me/${phone}?text=${encodeURIComponent(item.message || "")}` : "";
+  }
+  function reminderActionCards(status = "READY") {
+    const items = reminderDeliveries.filter((item) => item.status === status);
+    return items.map((item) => {
+      const whatsappUrl = whatsappReminderUrl(item);
+      return `<article class="offline-record reminder-message-card"><span class="record-icon">💬</span><span class="patient-copy"><strong>${escapeHtml(item.patient || "Hasta")}</strong><small>${Number(item.offset) === 7 ? "Randevuya 1 hafta kaldı" : "Randevuya 1 gün kaldı"} · ${escapeHtml(item.phone || "Numara yok")}</small><p>${escapeHtml(item.message || "")}</p><span class="modal-actions"><button class="mini-action" data-copy-reminder="${escapeHtml(item.id)}">Metni kopyala</button>${whatsappUrl ? `<a class="mini-action" href="${escapeHtml(whatsappUrl)}" target="_blank" rel="noopener noreferrer" data-whatsapp-reminder="${escapeHtml(item.id)}">WhatsApp'ta aç</a>` : ""}<button class="mini-action" data-complete-reminder="${escapeHtml(item.id)}">Gönderildi</button></span></span></article>`;
+    }).join("") || `<p class="empty-inline">Gönderilmeyi bekleyen mesaj yok.</p>`;
+  }
+  function copyReminderMessage(id) {
+    const item = reminderDeliveries.find((entry) => String(entry.id) === String(id));
+    if (!item) return;
+    const fallback = () => {
+      const input = document.createElement("textarea");
+      input.value = item.message || ""; input.setAttribute("readonly", ""); input.style.position = "fixed"; input.style.opacity = "0";
+      document.body.append(input); input.select(); document.execCommand("copy"); input.remove();
+    };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(item.message || "").catch(fallback);
+    else fallback();
+    showToast("Mesaj metni kopyalandı.");
+  }
   async function processAppointmentReminders() {
-    if (reminderProcessing || !reminderSettings.enabled || reminderSettings.senderDeviceId !== deviceId) return;
-    if (!/^https:\/\//i.test(reminderSettings.endpoint || "") || !reminderSettings.token) return;
+    if (reminderProcessing || !reminderSettings.enabled) return;
     reminderProcessing = true;
     try {
       const offsets = [reminderSettings.weekEnabled ? 7 : null, reminderSettings.dayEnabled ? 1 : null].filter(Number.isInteger);
+      const appointmentsById = new Map(state.appointments.map((appointment) => [String(appointment.id), appointment]));
+      const deliveryCountBeforeCleanup = reminderDeliveries.length;
+      reminderDeliveries = reminderDeliveries.filter((item) => {
+        if (item.status !== "READY") return true;
+        const appointment = appointmentsById.get(String(item.appointmentId));
+        return Boolean(appointment && ["PLANNED", "PENDING_CONFIRMATION"].includes(appointment.status) && daysUntil(appointment.date) === Number(item.offset));
+      });
+      let created = 0;
       for (const appointment of state.appointments) {
         if (!["PLANNED", "PENDING_CONFIRMATION"].includes(appointment.status) || !offsets.includes(daysUntil(appointment.date))) continue;
         const offset = daysUntil(appointment.date);
         const deliveryId = `${appointment.id}:${offset}`;
-        const previous = reminderDeliveries.find((item) => item.id === deliveryId);
-        if (previous?.status === "SENT" || (previous?.status === "SENDING" && Date.now() - Date.parse(previous.updatedAt || 0) < 10 * 60_000)) continue;
+        if (reminderDeliveries.some((item) => item.id === deliveryId)) continue;
         const patient = patientById(appointment.patientId);
         if (!patient?.phone) continue;
-        const delivery = previous || { id: deliveryId, appointmentId: appointment.id, offset, attempts: 0 };
-        Object.assign(delivery, { status: "SENDING", updatedAt: new Date().toISOString(), attempts: Number(delivery.attempts || 0) + 1 });
-        if (!previous) reminderDeliveries.unshift(delivery);
-        saveData();
-        try {
-          const response = await fetch(reminderSettings.endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${reminderSettings.token}`, "Idempotency-Key": deliveryId },
-            body: JSON.stringify({ idempotencyKey: deliveryId, channel: reminderSettings.channel, to: patient.phone, patientId: String(patient.id), appointmentId: String(appointment.id), message: reminderText(appointment, patient) })
-          });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          delivery.status = "SENT"; delivery.sentAt = new Date().toISOString(); delivery.lastError = "";
-          communicationLog.unshift({ id: nextLocalId(), patientId: patient.id, patient: patient.name, channel: reminderSettings.channel === "SMS" ? "SMS" : "WhatsApp", status: "Teslim edildi", message: reminderText(appointment, patient), date: "Şimdi", reminderDeliveryId: deliveryId });
-        } catch (error) {
-          delivery.status = "FAILED"; delivery.lastError = String(error instanceof Error ? error.message : error).slice(0, 180);
+        const reminderDate = new Date(`${appointment.date}T12:00:00`); reminderDate.setDate(reminderDate.getDate() - offset);
+        const createdAt = `${localDate(reminderDate)}T00:00:00.000Z`;
+        reminderDeliveries.unshift({ id: deliveryId, appointmentId: appointment.id, offset, patientId: patient.id, patient: patient.name, phone: patient.phone, appointmentDate: appointment.date, message: reminderText(appointment, patient), status: "READY", createdAt, updatedAt: createdAt });
+        created += 1;
+      }
+      if (created > 0 || reminderDeliveries.length !== deliveryCountBeforeCleanup) saveData();
+      if (created > 0) {
+        storage.set("clinicnova.notificationsRead", false);
+        if ($("#notificationDot")) $("#notificationDot").hidden = false;
+        if (typeof window.ClinicNovaNative?.showLocalNotification === "function") {
+          window.ClinicNovaNative.showLocalNotification("Randevu mesajı hazır", `${created} hasta için kopyalanabilir hatırlatma mesajı hazırlandı.`, `appointment-reminders-${localDate(new Date())}`);
+        } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          try { new Notification("Randevu mesajı hazır", { body: `${created} hasta için kopyalanabilir hatırlatma mesajı hazırlandı.` }); } catch { /* Uygulama içi bildirim her zaman kalır. */ }
         }
-        delivery.updatedAt = new Date().toISOString(); saveData();
       }
     } finally { reminderProcessing = false; }
   }
@@ -1375,7 +1409,7 @@
       "Stok": `<div class="list-stack">${stockItems.map((item) => { const critical = item.amount < item.minimum; return `<article class="offline-record record-deletable"><span class="transaction-icon ${critical ? "expense" : ""}">${critical ? "!" : "✓"}</span><span class="patient-copy"><strong>${escapeHtml(item.name)}</strong><small>Minimum ${item.minimum} ${escapeHtml(item.unit)}</small></span><span class="record-value ${critical ? "critical" : ""}">${item.amount}<small>${escapeHtml(item.unit)}</small></span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="stockItems" aria-label="${escapeHtml(item.name)} stok kaydını sil">Sil</button></article>`; }).join("") || `<p class="empty-inline">Stok kaydı yok.</p>`}</div>`,
       "İletişim": `<div class="modal-grid"><button class="button button-primary" data-action="add-communication">İletişim kaydı ekle</button><div class="list-stack">${communicationLog.map((item) => `<article class="offline-record record-deletable"><span class="record-channel">${escapeHtml(item.channel.slice(0, 1))}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)} · ${escapeHtml(item.channel)}</strong><small>${escapeHtml(item.message)}</small></span><span class="record-state">${escapeHtml(item.status)}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="communicationLog" aria-label="${escapeHtml(item.patient)} iletişim kaydını sil">Sil</button></article>`).join("") || `<p class="empty-inline">İletişim kaydı yok.</p>`}</div><p class="modal-note">Çevrimdışı modda geçmiş ve taslaklar görüntülenir. Gerçek WhatsApp, SMS ve e-posta gönderimi canlı bağlantı ister.</p></div>`,
       "Anketler": `<div class="modal-grid"><div class="modal-actions"><button class="button button-primary" data-action="add-survey">Anket oluştur</button><button class="button button-secondary" data-action="add-survey-response">Yanıt ekle</button></div><div class="list-stack">${surveys.map((item) => `<article class="offline-record record-deletable"><span class="record-icon">★</span><span class="patient-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description || "Açıklama yok")} · ${surveyResponses.filter((response) => Number(response.surveyId) === Number(item.id)).length} yanıt</small></span><span class="record-state">${item.active !== false ? "Aktif" : "Kapalı"}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="surveys">Sil</button></article>`).join("") || `<p class="empty-inline">Anket yok.</p>`}</div><div class="history-list">${surveyResponses.slice(0, 10).map((item) => `<article><i>${item.score}</i><span><strong>${escapeHtml(item.patient)} · ${escapeHtml(item.survey || "Anket")}</strong><small>${escapeHtml(item.date || "Şimdi")}</small><p>${escapeHtml(item.comment || "Yorum yok")}</p></span></article>`).join("")}</div></div>`,
-      "Recall": `<div class="modal-grid"><form id="reminderSettingsForm" class="modal-grid"><strong>Otomatik randevu mesajları</strong><label class="toggle-row"><span>Otomatik gönderimi aç</span><input name="enabled" type="checkbox" ${reminderSettings.enabled ? "checked" : ""}/></label><div class="modal-grid two"><label class="toggle-row"><span>1 hafta önce</span><input name="weekEnabled" type="checkbox" ${reminderSettings.weekEnabled ? "checked" : ""}/></label><label class="toggle-row"><span>1 gün önce</span><input name="dayEnabled" type="checkbox" ${reminderSettings.dayEnabled ? "checked" : ""}/></label></div><div class="modal-grid two"><label class="field">Kanal<select name="channel"><option value="WHATSAPP" ${reminderSettings.channel === "WHATSAPP" ? "selected" : ""}>WhatsApp</option><option value="SMS" ${reminderSettings.channel === "SMS" ? "selected" : ""}>SMS</option></select></label><label class="field">Gönderici cihaz<input value="Bu cihaz · ${escapeHtml((mobileConfig.platformLabel || "ClinicNova") + "-" + deviceId.slice(-6))}" readonly /></label></div><label class="field">Mesaj sağlayıcı webhook adresi<input name="endpoint" type="url" value="${escapeHtml(reminderSettings.endpoint || "")}" placeholder="https://..." /></label><label class="field">Sağlayıcı anahtarı<input name="token" type="password" autocomplete="new-password" placeholder="${reminderSettings.token ? "Kayıtlı anahtarı korumak için boş bırakın" : "Bearer anahtarı"}" /></label><label class="field">Mesaj şablonu<textarea name="template" required>${escapeHtml(reminderSettings.template || "")}</textarea></label><p class="modal-note">Kullanılabilen alanlar: {{name}}, {{date}}, {{time}}, {{treatment}}, {{clinic}}. Sağlayıcı aynı Idempotency-Key değerini ikinci kez göndermemelidir. Seçilen cihaz açık ve internete bağlıyken kuyruk çalışır.</p><button class="button button-primary">Hatırlatma ayarlarını kaydet</button></form><div class="finance-stats"><article class="finance-stat"><span>Gönderildi</span><strong>${reminderDeliveries.filter((item) => item.status === "SENT").length}</strong><small>Tekrarsız teslimat</small></article><article class="finance-stat"><span>Hata</span><strong>${reminderDeliveries.filter((item) => item.status === "FAILED").length}</strong><small>Otomatik yeniden denenir</small></article></div><button class="button button-secondary" data-action="add-recall">Takip ekle</button><div class="list-stack">${recalls.map((item) => `<article class="offline-record record-deletable"><span class="record-icon">↻</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.reason)} · ${escapeHtml(item.dueDate)}</small></span><span class="record-state">${escapeHtml(item.status)}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="recalls">Sil</button></article>`).join("") || `<p class="empty-inline">Takip kaydı yok.</p>`}</div></div>`,
+      "Recall": `<div class="modal-grid"><form id="reminderSettingsForm" class="modal-grid"><strong>Randevu mesajı hatırlatmaları</strong><label class="toggle-row"><span>Hatırlatma bildirimlerini aç</span><input name="enabled" type="checkbox" ${reminderSettings.enabled ? "checked" : ""}/></label><div class="modal-grid two"><label class="toggle-row"><span>1 hafta önce</span><input name="weekEnabled" type="checkbox" ${reminderSettings.weekEnabled ? "checked" : ""}/></label><label class="toggle-row"><span>1 gün önce</span><input name="dayEnabled" type="checkbox" ${reminderSettings.dayEnabled ? "checked" : ""}/></label></div><label class="field">Hazır mesaj metni<textarea name="template" required>${escapeHtml(reminderSettings.template || "")}</textarea></label><p class="modal-note">Kullanılabilen alanlar: {{name}}, {{date}}, {{time}}, {{treatment}}, {{clinic}}. Mesaj otomatik gönderilmez; zamanı gelince uygulama bildirimi oluşturur. Personel metni kopyalar veya WhatsApp'ta açıp gönderir. API, ücretli sağlayıcı ve WhatsApp Business hesabı gerekmez.</p><button class="button button-primary">Hatırlatma ayarlarını kaydet</button></form><div class="finance-stats"><article class="finance-stat"><span>Gönderilmeyi bekliyor</span><strong>${reminderDeliveries.filter((item) => item.status === "READY").length}</strong><small>Kopyalanabilir mesaj</small></article><article class="finance-stat"><span>Gönderildi</span><strong>${reminderDeliveries.filter((item) => item.status === "DONE").length}</strong><small>Personel tarafından işaretlendi</small></article></div><section class="modal-grid"><strong>Hazır mesajlar</strong><div class="list-stack">${reminderActionCards()}</div></section><button class="button button-secondary" data-action="add-recall">Takip ekle</button><div class="list-stack">${recalls.map((item) => `<article class="offline-record record-deletable"><span class="record-icon">↻</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.reason)} · ${escapeHtml(item.dueDate)}</small></span><span class="record-state">${escapeHtml(item.status)}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="recalls">Sil</button></article>`).join("") || `<p class="empty-inline">Takip kaydı yok.</p>`}</div></div>`,
       "Raporlar": `<div class="modal-grid"><div class="finance-stats"><article class="finance-stat"><span>Tahsilat</span><strong>${currency(paidIncome)}</strong><small>Ödenmiş gelir</small></article><article class="finance-stat"><span>Net akış</span><strong>${currency(paidIncome - expenses)}</strong><small>${currency(expenses)} gider</small></article></div><div class="finance-stats"><article class="finance-stat"><span>Bekleyen</span><strong>${currency(pendingTotal)}</strong><small>Tahsil edilecek</small></article><article class="finance-stat"><span>Stok değeri</span><strong>${currency(stockValue)}</strong><small>${criticalStock} kritik ürün</small></article></div><div class="finance-stats"><article class="finance-stat"><span>Hasta</span><strong>${state.patients.length}</strong><small>Yerel kayıt</small></article><article class="finance-stat"><span>Randevu</span><strong>${state.appointments.length}</strong><small>${completedAppointments} tamamlandı · ${noShowAppointments} gelmedi</small></article></div><section class="patient-section"><div class="patient-section-title"><strong>Hekim performansı</strong><span>${doctorCounts.length}</span></div><div class="history-list">${doctorCounts.map(([doctor, count]) => `<article><i>👨‍⚕️</i><span><strong>${escapeHtml(doctor)}</strong><small>${count} randevu</small></span></article>`).join("") || `<p class="empty-inline">Hekim verisi yok.</p>`}</div></section><section class="patient-section"><div class="patient-section-title"><strong>Tedavi dağılımı</strong><span>${treatmentCounts.length}</span></div><div class="history-list">${treatmentCounts.slice(0, 8).map(([treatment, count]) => `<article><i>🦷</i><span><strong>${escapeHtml(treatment)}</strong><small>${count} kayıt</small></span></article>`).join("") || `<p class="empty-inline">Tedavi verisi yok.</p>`}</div></section><button class="button button-primary" data-go="finance">Finans ayrıntısını aç</button></div>`,
       "Dijital onam": `<div class="list-stack">${consentRecords.map((item) => `<article class="offline-record record-deletable"><span class="transaction-icon ${item.status === "İmzalandı" ? "" : "pending"}">${item.status === "İmzalandı" ? "✓" : "!"}</span><span class="patient-copy"><strong>${escapeHtml(item.patient)}</strong><small>${escapeHtml(item.form)} · ${escapeHtml(item.date)}</small></span><span class="record-state">${escapeHtml(item.status)}</span><button class="delete-button" data-delete-record="${item.id}" data-record-kind="consentRecords" aria-label="${escapeHtml(item.patient)} onam kaydını sil">Sil</button></article>`).join("") || `<p class="empty-inline">Onam kaydı yok.</p>`}<p class="modal-note">Kimlik doğrulamalı imza gönderimi ve yasal sunucu kaydı bağlantı gerektirir.</p></div>`,
       "Çöp Kutusu": `<div class="modal-grid"><p class="modal-note">Silinen kayıtlar 30 gün burada saklanır. Süre dolunca otomatik ve kalıcı olarak temizlenir.</p><div class="list-stack">${trashItems.map((item) => `<article class="trash-record"><span class="record-icon">♻</span><span class="patient-copy"><strong>${escapeHtml(item.label)}</strong><small>${trashDaysLeft(item)} gün kaldı</small></span><button class="mini-action" data-restore-trash="${item.id}">Geri yükle</button><button class="delete-button" data-purge-trash="${item.id}" aria-label="${escapeHtml(item.label)} kaydını kalıcı sil">Kalıcı sil</button></article>`).join("") || `<p class="empty-inline">Çöp Kutusu boş.</p>`}</div>${trashItems.length ? `<button class="button button-secondary" data-empty-trash>Çöp Kutusunu boşalt</button>` : ""}</div>`
@@ -1389,7 +1423,9 @@
   function openNotifications() {
     if (!previewMode) storage.set("clinicnova.notificationsRead", true);
     $("#notificationDot").hidden = true;
-    openModal("BİLDİRİMLER", "Bugün sizden beklenenler", `<div class="list-stack">
+    const readyCount = reminderDeliveries.filter((item) => item.status === "READY").length;
+    openModal("BİLDİRİMLER", readyCount ? `${readyCount} mesaj gönderilmeyi bekliyor` : "Bugün sizden beklenenler", `<div class="list-stack">
+      ${reminderActionCards()}
       <button class="patient-card action-card" data-module="Stok"><span class="transaction-icon expense">!</span><span class="patient-copy"><strong>Stok seviyesi kritik</strong><small>Anestezi kartuşu minimum seviyenin altında.</small></span><svg><use href="#i-chevron"/></svg></button>
       <button class="patient-card action-card" data-transaction-filter="PENDING"><span class="transaction-icon pending">!</span><span class="patient-copy"><strong>Tahsilat gecikmesi</strong><small>2 hastanın ödeme planı bugün aksiyon bekliyor.</small></span><svg><use href="#i-chevron"/></svg></button>
       <button class="patient-card action-card" data-action="opportunities"><span class="transaction-icon">↗</span><span class="patient-copy"><strong>Yeni sağlık turizmi lead’i</strong><small>UK kaynaklı implant talebi yüksek skorlu görünüyor.</small></span><svg><use href="#i-chevron"/></svg></button>
@@ -1773,8 +1809,21 @@
   $("#previewDemoButton").addEventListener("click", enterPreviewMode);
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("button, [data-go], [data-action]");
+    const target = event.target.closest("button, [data-go], [data-action], [data-copy-reminder], [data-whatsapp-reminder], [data-complete-reminder]");
     if (!target) return;
+    if (target.dataset.copyReminder) { copyReminderMessage(target.dataset.copyReminder); return; }
+    if (target.dataset.whatsappReminder) {
+      const item = reminderDeliveries.find((entry) => String(entry.id) === String(target.dataset.whatsappReminder));
+      if (item) { item.lastOpenedAt = new Date().toISOString(); item.updatedAt = item.lastOpenedAt; saveData(); }
+      return;
+    }
+    if (target.dataset.completeReminder) {
+      const item = reminderDeliveries.find((entry) => String(entry.id) === String(target.dataset.completeReminder));
+      if (!item) return;
+      item.status = "DONE"; item.completedAt = new Date().toISOString(); item.updatedAt = item.completedAt;
+      communicationLog.unshift({ id: nextLocalId(), patientId: item.patientId, patient: item.patient, channel: "WhatsApp", status: "Personel gönderdi", message: item.message, date: "Şimdi", reminderDeliveryId: item.id });
+      saveData(); openNotifications(); showToast("Mesaj gönderildi olarak işaretlendi."); return;
+    }
     if (target.dataset.go) { closeModal(); return navigate(target.dataset.go); }
     if (target.dataset.calendarStep) {
       const step = Number(target.dataset.calendarStep);
@@ -1972,6 +2021,7 @@
       recalls = recalls.filter((item) => Number(item.patientId) !== patientId);
       surveyResponses = surveyResponses.filter((item) => Number(item.patientId) !== patientId);
       communicationLog = communicationLog.filter((item) => Number(item.patientId) !== patientId);
+      reminderDeliveries = reminderDeliveries.filter((item) => Number(item.patientId) !== patientId);
       delete state.treatmentHistory[patientId];
       delete state.patientMedia[patientId];
       saveData(); renderAll(); closeModal(); showToast("Hasta ve bağlı kayıtları silindi."); return;
@@ -1985,6 +2035,7 @@
       if (deletedAppointmentSnapshot) moveToTrash("appointment", `${patientById(deletedAppointmentSnapshot.patientId)?.name || "Hasta"} randevusu`, deletedAppointmentSnapshot);
       if (deletedAppointment) queueDelete("APPOINTMENT", appointmentId);
       state.appointments = state.appointments.filter((item) => item.id !== appointmentId);
+      reminderDeliveries = reminderDeliveries.filter((item) => String(item.appointmentId) !== String(appointmentId));
       if (deletedAppointment) state.treatmentHistory[deletedAppointment.patientId] = (state.treatmentHistory[deletedAppointment.patientId] || []).filter((item) => Number(item.appointmentId) !== appointmentId);
       saveData(); renderAll(); closeModal(); showToast("Randevu silindi."); return;
     }
@@ -2092,7 +2143,7 @@
     if (target.hasAttribute("data-clear-local")) {
       if (!window.confirm("Bu cihazdaki tüm yerel klinik kayıtları ve bekleyen eşitleme işlemleri silinsin mi?")) return;
       state.patients = []; state.appointments = []; state.transactions = []; state.treatmentHistory = {}; state.patientMedia = {};
-      hotLeads = []; treatmentPlans = []; stockItems = []; stockRecipes = []; communicationLog = []; consentRecords = []; treatments = []; staffRecords = []; surveys = []; surveyResponses = []; recalls = []; trashItems = [];
+      hotLeads = []; treatmentPlans = []; stockItems = []; stockRecipes = []; communicationLog = []; consentRecords = []; treatments = []; staffRecords = []; surveys = []; surveyResponses = []; recalls = []; reminderDeliveries = []; reminderSettings = { ...defaultReminderSettings }; trashItems = [];
       syncQueue = []; syncMap = {}; storage.set("clinicnova.syncBootstrapComplete", true);
       saveData(); persistSyncState(); renderAll(); closeModal(); showToast("Yerel kayıtlar temizlendi."); return;
     }
@@ -2107,7 +2158,7 @@
       stockItems = JSON.parse(JSON.stringify(defaultStockItems));
       communicationLog = JSON.parse(JSON.stringify(defaultCommunicationLog));
       consentRecords = JSON.parse(JSON.stringify(defaultConsentRecords));
-      treatments = []; staffRecords = []; surveys = []; surveyResponses = []; recalls = [];
+      treatments = []; staffRecords = []; surveys = []; surveyResponses = []; recalls = []; reminderDeliveries = []; reminderSettings = { ...defaultReminderSettings };
       trashItems = [];
       state.transactionFilter = "ALL";
       state.consentFilter = "ALL";
@@ -2259,13 +2310,16 @@
     }
     if (event.target.id === "reminderSettingsForm") {
       event.preventDefault(); const form = new FormData(event.target);
-      const enabled = form.get("enabled") === "on"; const endpoint = String(form.get("endpoint") || "").trim(); const nextToken = String(form.get("token") || "").trim();
+      const enabled = form.get("enabled") === "on";
       const template = String(form.get("template") || "").trim();
-      if (enabled && (!/^https:\/\/[^\s]+$/i.test(endpoint) || !(nextToken || reminderSettings.token))) return showToast("Otomatik gönderim için HTTPS webhook adresi ve sağlayıcı anahtarı gereklidir.");
       if (template.length < 10 || template.length > 1000) return showToast("Mesaj şablonu 10-1000 karakter olmalıdır.");
-      reminderSettings = { id: "clinic", enabled, weekEnabled: form.get("weekEnabled") === "on", dayEnabled: form.get("dayEnabled") === "on", channel: String(form.get("channel") || "WHATSAPP"), endpoint, token: nextToken || reminderSettings.token || "", senderDeviceId: deviceId, template };
-      if (enabled && !reminderSettings.weekEnabled && !reminderSettings.dayEnabled) return showToast("En az bir gönderim zamanı seçin.");
-      saveData(); openModule("Recall"); showToast(enabled ? "Otomatik randevu mesajları açıldı." : "Otomatik randevu mesajları kapatıldı."); processAppointmentReminders(); return;
+      reminderSettings = { id: "clinic", enabled, weekEnabled: form.get("weekEnabled") === "on", dayEnabled: form.get("dayEnabled") === "on", template };
+      if (enabled && !reminderSettings.weekEnabled && !reminderSettings.dayEnabled) return showToast("En az bir bildirim zamanı seçin.");
+      if (enabled && typeof Notification !== "undefined" && Notification.permission === "default") {
+        try { await Notification.requestPermission(); } catch { /* Uygulama içi bildirim kullanılmaya devam eder. */ }
+      }
+      if (enabled && typeof window.ClinicNovaNative?.requestNotificationPermission === "function") window.ClinicNovaNative.requestNotificationPermission();
+      saveData(); openModule("Recall"); showToast(enabled ? "Randevu mesajı bildirimleri açıldı." : "Randevu mesajı bildirimleri kapatıldı."); processAppointmentReminders(); return;
     }
     if (event.target.id === "treatmentHistoryForm") {
       event.preventDefault();
@@ -2546,7 +2600,7 @@
   setInterval(processAppointmentReminders, 60_000);
   configureEntryMode();
   if (storage.get("clinicnova.theme", "light") === "dark") document.documentElement.classList.add("dark");
-  $("#notificationDot").hidden = storage.get("clinicnova.notificationsRead", false);
+  $("#notificationDot").hidden = storage.get("clinicnova.notificationsRead", false) && !reminderDeliveries.some((item) => item.status === "READY");
   window.ClinicNovaBack = () => {
     if (!$("#modalBackdrop").hidden) {
       closeModal();

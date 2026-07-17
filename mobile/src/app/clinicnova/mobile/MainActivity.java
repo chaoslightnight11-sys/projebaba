@@ -1,8 +1,13 @@
 package app.clinicnova.mobile;
 
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.Manifest;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.content.ContentValues;
 import android.content.SharedPreferences;
@@ -45,6 +50,8 @@ public class MainActivity extends Activity {
     private static final String HOME_URL = "file:///android_asset/index.html";
     private static final int FILE_CHOOSER_REQUEST = 4102;
     private static final String MESH_KEY_ALIAS = "clinicnova.mesh.local.v1";
+    private static final String REMINDER_CHANNEL_ID = "clinicnova_appointment_reminders";
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 4103;
     private WebView webView;
     private ValueCallback<Uri[]> fileCallback;
     private Uri cameraPhotoUri;
@@ -236,6 +243,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean meshPublish(String envelope) { if (envelope == null || envelope.getBytes(StandardCharsets.UTF_8).length > 64 * 1024 * 1024) return false; return meshWrite("envelope", envelope); }
         @JavascriptInterface public void meshSyncNow() { meshTransport.announce(); }
         @JavascriptInterface public boolean meshDisable() { meshTransport.stop(); return meshPreferences.edit().clear().commit(); }
+        @JavascriptInterface public void requestNotificationPermission() { runOnUiThread(() -> ensureNotificationPermission()); }
+        @JavascriptInterface public void showLocalNotification(String title, String body, String tag) { runOnUiThread(() -> publishLocalNotification(title, body, tag)); }
         @JavascriptInterface
         public void connect(String serverUrl) {
             runOnUiThread(() -> {
@@ -288,6 +297,24 @@ public class MainActivity extends Activity {
         public void productSearch(String serverUrl, String productUrl, String itemId) {
             new Thread(() -> performProductSearch(serverUrl, productUrl, itemId)).start();
         }
+    }
+
+    private void ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
+        }
+    }
+
+    private void publishLocalNotification(String title, String body, String tag) {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(REMINDER_CHANNEL_ID, "Randevu mesajı hatırlatmaları", NotificationManager.IMPORTANCE_DEFAULT));
+        String safeTitle = title == null ? "ClinicNova" : title.substring(0, Math.min(title.length(), 80));
+        String safeBody = body == null ? "" : body.substring(0, Math.min(body.length(), 240));
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, REMINDER_CHANNEL_ID) : new Notification.Builder(this);
+        builder.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(safeTitle).setContentText(safeBody).setStyle(new Notification.BigTextStyle().bigText(safeBody)).setAutoCancel(true);
+        manager.notify(tag == null ? 0 : tag.hashCode(), builder.build());
     }
 
     private boolean validStorageKey(String key) { return key != null && key.matches("^clinicnova\\.[A-Za-z0-9._-]{1,80}$"); }

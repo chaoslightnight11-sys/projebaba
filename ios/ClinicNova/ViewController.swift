@@ -1,7 +1,8 @@
 import UIKit
 import WebKit
+import UserNotifications
 
-final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
+final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UNUserNotificationCenterDelegate {
     private let store = SecureMeshStore()
     private var localRecords: [String: String] = [:]
     private var webView: WKWebView!
@@ -16,7 +17,8 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
         view.backgroundColor = UIColor(red: 248 / 255, green: 250 / 255, blue: 252 / 255, alpha: 1)
         let content = WKUserContentController()
         if let data = store.read("records").data(using: .utf8), let values = try? JSONDecoder().decode([String: String].self, from: data) { localRecords = values }
-        for name in ["meshConfigure", "meshPublish", "meshSyncNow", "meshDisable", "storageSet"] { content.add(self, name: name) }
+        for name in ["meshConfigure", "meshPublish", "meshSyncNow", "meshDisable", "storageSet", "requestNotificationPermission", "showLocalNotification"] { content.add(self, name: name) }
+        UNUserNotificationCenter.current().delegate = self
         content.addUserScript(WKUserScript(source: nativeBridgeScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = content
@@ -44,7 +46,7 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
 
     deinit {
         mesh.stop()
-        for name in ["meshConfigure", "meshPublish", "meshSyncNow", "meshDisable", "storageSet"] { webView?.configuration.userContentController.removeScriptMessageHandler(forName: name) }
+        for name in ["meshConfigure", "meshPublish", "meshSyncNow", "meshDisable", "storageSet", "requestNotificationPermission", "showLocalNotification"] { webView?.configuration.userContentController.removeScriptMessageHandler(forName: name) }
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -64,6 +66,16 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
                   stored.utf8.count <= 64 * 1024 * 1024 else { return }
             localRecords[key] = stored
             if let data = try? JSONEncoder().encode(localRecords), let text = String(data: data, encoding: .utf8) { _ = store.write("records", value: text) }
+        case "requestNotificationPermission":
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        case "showLocalNotification":
+            guard let value = message.body as? [String: Any] else { return }
+            let content = UNMutableNotificationContent()
+            content.title = String((value["title"] as? String ?? "ClinicNova").prefix(80))
+            content.body = String((value["body"] as? String ?? "").prefix(240))
+            content.sound = .default
+            let identifier = String((value["tag"] as? String ?? UUID().uuidString).prefix(120))
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
         default: break
         }
     }
@@ -105,9 +117,15 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
           meshConfigure: function(value){ window.__clinicNovaIOSConfig = value; window.webkit.messageHandlers.meshConfigure.postMessage(value); return true; },
           meshPublish: function(value){ window.__clinicNovaIOSEnvelope = value; window.webkit.messageHandlers.meshPublish.postMessage(value); return true; },
           meshSyncNow: function(){ window.webkit.messageHandlers.meshSyncNow.postMessage(""); },
-          meshDisable: function(){ window.__clinicNovaIOSConfig = ""; window.__clinicNovaIOSEnvelope = ""; window.webkit.messageHandlers.meshDisable.postMessage(""); return true; }
+          meshDisable: function(){ window.__clinicNovaIOSConfig = ""; window.__clinicNovaIOSEnvelope = ""; window.webkit.messageHandlers.meshDisable.postMessage(""); return true; },
+          requestNotificationPermission: function(){ window.webkit.messageHandlers.requestNotificationPermission.postMessage(""); },
+          showLocalNotification: function(title,body,tag){ window.webkit.messageHandlers.showLocalNotification.postMessage({title:title,body:body,tag:tag}); }
         });
         """
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 
     private func call(_ function: String, _ first: String, _ second: String) {

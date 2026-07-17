@@ -570,18 +570,18 @@ test("Android exposes the new parity modules and their offline CRUD forms", asyn
   await page.locator('#recallForm input[name="reason"]').fill("Altı aylık kontrol");
   await page.getByRole("button", { name: "Takibi kaydet" }).click();
   await expect(page.locator("#modalBody")).toContainText("Altı aylık kontrol");
-  let reminderRequest: Record<string, unknown> | null = null;
-  await page.route("https://messages.example.test/reminder", async (route) => {
-    reminderRequest = route.request().postDataJSON();
-    await route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' });
-  });
   await page.locator('#reminderSettingsForm input[name="enabled"]').check();
-  await page.locator('#reminderSettingsForm input[name="endpoint"]').fill("https://messages.example.test/reminder");
-  await page.locator('#reminderSettingsForm input[name="token"]').fill("test-provider-token");
   await page.locator("#reminderSettingsForm").getByRole("button", { name: "Hatırlatma ayarlarını kaydet" }).click();
   await page.evaluate(() => (window as typeof window & { ClinicNovaProcessReminders: () => Promise<void> }).ClinicNovaProcessReminders());
-  await expect.poll(() => reminderRequest).not.toBeNull();
-  expect(reminderRequest).toMatchObject({ channel: "WHATSAPP", appointmentId: "5" });
+  await page.getByRole("button", { name: "Kapat", exact: true }).click();
+  await page.locator("#notificationButton").click();
+  await expect(page.locator("#modalBody")).toContainText("Can Şahin");
+  const whatsappLink = page.getByRole("link", { name: "WhatsApp'ta aç" }).first();
+  await expect(whatsappLink).toHaveAttribute("href", /https:\/\/wa\.me\/905/);
+  await page.getByRole("button", { name: "Metni kopyala" }).first().click();
+  await expect(page.locator("#toast")).toContainText("Mesaj metni kopyalandı");
+  await page.getByRole("button", { name: "Gönderildi" }).first().click();
+  await expect(page.locator("#modalTitle")).toContainText("Bugün sizden beklenenler");
 
   await page.getByRole("button", { name: "Kapat", exact: true }).click();
   await expect(page.locator("#moduleGrid").getByRole("button", { name: /Tam web paneli/ })).toBeVisible();
