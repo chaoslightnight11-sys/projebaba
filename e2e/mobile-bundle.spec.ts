@@ -169,7 +169,7 @@ test("offline storage failures warn staff instead of silently claiming durabilit
 test("production account creation stops when secure storage rejects the write", async ({ page }) => {
   await page.addInitScript(() => {
     Object.assign(window, {
-      CLINICNOVA_MOBILE_CONFIG: { mode: "production", platform: "ios", platformLabel: "iOS", appVersion: "1.15.4", serverUrl: "" },
+      CLINICNOVA_MOBILE_CONFIG: { mode: "production", platform: "ios", platformLabel: "iOS", appVersion: "1.15.5", serverUrl: "" },
       ClinicNovaNative: { storageGet: () => null, storageSet: () => false }
     });
   });
@@ -720,6 +720,14 @@ test("Android exposes the new parity modules and their offline CRUD forms", asyn
   await page.locator('#staffForm input[name="roleLabel"]').fill("Diş hekimi asistanı");
   await page.locator("#staffForm").getByRole("button", { name: "Kaydet" }).click();
   await expect(page.getByText("Mobil Asistan", { exact: true })).toBeVisible();
+  const mobileStaff = page.locator(".offline-record").filter({ hasText: "Mobil Asistan" });
+  page.once("dialog", (dialog) => dialog.accept());
+  await mobileStaff.getByRole("button", { name: "Mobil Asistan personelini çıkar" }).click();
+  await expect(mobileStaff).toContainText("Pasif");
+  await expect(mobileStaff.getByRole("button", { name: "Mobil Asistan personelini yeniden aktifleştir" })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await mobileStaff.getByRole("button", { name: "Mobil Asistan personelini yeniden aktifleştir" }).click();
+  await expect(mobileStaff).toContainText("Aktif");
 
   await page.getByRole("button", { name: "Kapat", exact: true }).click();
   await page.locator("#moduleGrid").getByRole("button", { name: /Anketler/ }).click();

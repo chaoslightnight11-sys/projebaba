@@ -97,6 +97,18 @@ test("sales workflows expose full calendar, treatment details, stock purchasing 
   await expect(page.getByLabel("Bu tahsilat peşinattır")).toBeVisible();
 });
 
+test("staff can be removed from the active roster without losing its record", async ({ page }) => {
+  await page.goto("/demo-open");
+  await page.goto("/dashboard/staff");
+  const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "Seda Resepsiyon", exact: true }) });
+  await row.getByRole("button", { name: "Personeli çıkar" }).click();
+  await expect(row).toContainText("Pasif");
+  await expect(row.getByRole("button", { name: "Yeniden aktifleştir" })).toBeVisible();
+  await row.getByRole("button", { name: "Yeniden aktifleştir" }).click();
+  await expect(row).toContainText("Aktif");
+  await expect(row.getByRole("button", { name: "Personeli çıkar" })).toBeVisible();
+});
+
 test("completed treatments consume their material recipe and reversal returns stock", async ({ page }, testInfo) => {
   await page.goto("/demo-open");
   const suffix = `${testInfo.project.name === "android-chrome" ? "mobil" : "masaustu"}-${Date.now()}-${testInfo.retry}`;

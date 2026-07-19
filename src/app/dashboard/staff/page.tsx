@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { UserRoundCog } from "lucide-react";
+import { RotateCcw, UserMinus, UserRoundCog } from "lucide-react";
 import { ModuleHeader } from "@/components/dashboard/module-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,18 @@ async function createStaffAction(formData: FormData) {
   revalidatePath("/dashboard/staff");
 }
 
+async function setStaffActiveAction(staffId: string, active: boolean) {
+  "use server";
+  const session = await requireModuleAccess("staff");
+  if (!staffId || staffId.length > 128) throw new Error("Personel kaydı geçersiz.");
+  const result = await prisma.staff.updateMany({
+    where: { id: staffId, organizationId: session.organizationId },
+    data: { active }
+  });
+  if (!result.count) throw new Error("Personel kaydı bulunamadı.");
+  revalidatePath("/dashboard/staff");
+}
+
 export default async function StaffPage() {
   const session = await requireModuleAccess("staff");
   const staff = await prisma.staff.findMany({
@@ -63,7 +75,7 @@ export default async function StaffPage() {
       <Card>
         <CardContent className="p-0">
           <Table>
-            <TableHeader><TableRow><TableHead>Ad soyad</TableHead><TableHead>Rol</TableHead><TableHead>Telefon</TableHead><TableHead>E-posta</TableHead><TableHead>Şube</TableHead><TableHead>Çalışma</TableHead><TableHead>Durum</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Ad soyad</TableHead><TableHead>Rol</TableHead><TableHead>Telefon</TableHead><TableHead>E-posta</TableHead><TableHead>Şube</TableHead><TableHead>Çalışma</TableHead><TableHead>Durum</TableHead><TableHead>Personel işlemi</TableHead></TableRow></TableHeader>
             <TableBody>
               {staff.map((item) => (
                 <TableRow key={item.id}>
@@ -74,6 +86,14 @@ export default async function StaffPage() {
                   <TableCell>{item.branch.name}</TableCell>
                   <TableCell>{item.workingHours ?? "-"}</TableCell>
                   <TableCell><Badge variant={item.active ? "success" : "muted"}>{item.active ? "Aktif" : "Pasif"}</Badge></TableCell>
+                  <TableCell>
+                    <form action={setStaffActiveAction.bind(null, item.id, !item.active)}>
+                      <Button variant={item.active ? "destructive" : "outline"} size="sm" type="submit">
+                        {item.active ? <UserMinus className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                        {item.active ? "Personeli çıkar" : "Yeniden aktifleştir"}
+                      </Button>
+                    </form>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
