@@ -158,6 +158,30 @@ test("offline storage failures warn staff instead of silently claiming durabilit
   await page.locator('#recallForm input[name="reason"]').fill("Depolama kontrolü");
   await page.getByRole("button", { name: "Takibi kaydet" }).click();
   await expect(page.locator("#toast")).toContainText("Cihaz depolamasına yazılamadı");
+  await page.getByRole("button", { name: "Takip ekle" }).click();
+  await page.locator('#recallForm input[name="reason"]').fill("İkinci depolama kontrolü");
+  await page.getByRole("button", { name: "Takibi kaydet" }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator(".offline-record").filter({ hasText: "Depolama kontrolü" }).last().getByRole("button", { name: "Sil" }).click();
+  await expect(page.locator(".offline-record").filter({ hasText: "İkinci depolama kontrolü" })).toBeVisible();
+});
+
+test("production account creation stops when secure storage rejects the write", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      CLINICNOVA_MOBILE_CONFIG: { mode: "production", platform: "ios", platformLabel: "iOS", appVersion: "1.15.4", serverUrl: "" },
+      ClinicNovaNative: { storageGet: () => null, storageSet: () => false }
+    });
+  });
+  await page.goto(mobileUrl);
+  await page.getByLabel("Klinik adı").fill("Güvenli Kasa Testi");
+  await page.getByLabel("Yönetici adı").fill("Tuna Akın");
+  await page.getByLabel("E-posta").fill("tuna@kasa.test");
+  await page.getByLabel("Parola").fill("GuvenliYerelParola!2026");
+  await page.getByRole("button", { name: "Hesabı oluştur ve başla" }).click();
+  await expect(page.getByRole("status")).toContainText("Yerel hesap cihazda saklanamadı");
+  await expect(page.getByRole("heading", { name: "Yerel yönetici hesabını oluşturun." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kurtarma kodunuzu kaydedin" })).toHaveCount(0);
 });
 
 test("manual reminders survive rescheduling, refresh patient details, and disable cleanly", async ({ page }) => {
@@ -497,6 +521,23 @@ test("production Android starts with an empty persistent local workspace", async
   const account = await page.evaluate(() => JSON.parse(localStorage.getItem("clinicnova.localAccount") || "{}"));
   expect(account).not.toHaveProperty("password");
   expect(account.passwordHash).toMatch(/^[A-Za-z0-9+/]+=*$/);
+
+  await page.locator(".bottom-nav").getByRole("button", { name: "Finans", exact: true }).click();
+  await page.getByRole("button", { name: "Gider ekle" }).click();
+  await page.locator('#expenseForm input[name="name"]').fill("Geri Yüklenen Gider");
+  await page.locator('#expenseForm input[name="amount"]').fill("900");
+  await page.getByRole("button", { name: "Gideri kaydet" }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Geri Yüklenen Gider finans kaydını sil" }).click();
+  await page.getByRole("button", { name: "Diğer", exact: true }).click();
+  await page.getByRole("button", { name: /^Çöp Kutusu/ }).click();
+  await page.locator(".trash-record").filter({ hasText: "Geri Yüklenen Gider" }).getByRole("button", { name: "Geri yükle", exact: true }).click();
+  const restoredExpenseOperations = await page.evaluate(() => {
+    const queue = JSON.parse(localStorage.getItem("clinicnova.syncQueue") || "[]") as Array<{ entityType: string; action: string; payload?: { type?: string; description?: string } }>;
+    return queue.filter((item) => item.entityType === "PAYMENT" && item.action === "CREATE" && item.payload?.type === "EXPENSE" && item.payload?.description?.includes("Geri Yüklenen Gider"));
+  });
+  expect(restoredExpenseOperations).toHaveLength(1);
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Diğer", exact: true }).click();
   await page.getByRole("button", { name: /Çıkış yap/ }).click();

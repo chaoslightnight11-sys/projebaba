@@ -32,6 +32,8 @@ test("completed treatments carry compressed before and after photos in the mesh 
   assert.match(app, /image\.naturalWidth \* image\.naturalHeight > 60_000_000/);
   assert.match(app, /if \(!context\) throw new Error/);
   assert.match(app, /treatments, staffRecords/);
+  assert.match(app, /const dataUrl = await imageFileData\(file\)/);
+  assert.doesNotMatch(app, /reader\.readAsDataURL\(file\)/);
 });
 
 test("Android and iOS local records use their hardware-backed encrypted stores", () => {
@@ -39,8 +41,18 @@ test("Android and iOS local records use their hardware-backed encrypted stores",
   assert.match(android, /AndroidKeyStore/);
   assert.match(ios, /storageGet:/);
   assert.match(ios, /store\.write\("records"/);
+  assert.match(ios, /__clinicnova_storage_set__/);
+  assert.match(ios, /writeLocalRecord\(key: key, value: stored\) \? "ok" : nil/);
   assert.match(fs.readFileSync("ios/ClinicNova/SecureMeshStore.swift", "utf8"), /AES\.GCM\.seal/);
   assert.match(android, /POST_NOTIFICATIONS/);
   assert.match(android, /publishLocalNotification/);
   assert.match(ios, /UNUserNotificationCenter/);
+});
+
+test("critical local writes fail closed and restored expenses return to the sync queue", () => {
+  assert.match(app, /if \(!persistLocalAccount\(account\)\) return showToast\("Yerel hesap cihazda saklanamadı/);
+  assert.match(app, /if \(!storage\.set\("clinicnova\.serverUrl", serverUrl\)\)/);
+  assert.match(app, /localIdCounter = \(localIdCounter \+ 1\)/);
+  assert.match(app, /payload\.transactions\.forEach\(\(item\) => queueCreate\("PAYMENT"/);
+  assert.match(app, /trashItem\.kind === "transaction"\) \{ state\.transactions\.unshift\(payload\); queueCreate\("PAYMENT"/);
 });

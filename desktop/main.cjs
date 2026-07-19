@@ -20,9 +20,9 @@ function validStorageKey(key) {
   return typeof key === "string" && /^clinicnova\.[A-Za-z0-9._-]{1,80}$/.test(key);
 }
 
-function persistStore() {
+function persistStore(nextStore = encryptedStore) {
   const temporary = `${storePath}.tmp`;
-  fs.writeFileSync(temporary, JSON.stringify(encryptedStore), { encoding: "utf8", mode: 0o600 });
+  fs.writeFileSync(temporary, JSON.stringify(nextStore), { encoding: "utf8", mode: 0o600 });
   fs.renameSync(temporary, storePath);
 }
 
@@ -59,16 +59,18 @@ function installIpcHandlers() {
     event.returnValue = false;
     if (!rendererAllowed(event) || !validStorageKey(key) || typeof value !== "string" || Buffer.byteLength(value) > 64 * 1024 * 1024) return;
     if (!safeStorage.isEncryptionAvailable()) return;
-    encryptedStore[key] = safeStorage.encryptString(value).toString("base64");
-    persistStore();
-    event.returnValue = true;
+    try {
+      const nextStore = { ...encryptedStore, [key]: safeStorage.encryptString(value).toString("base64") };
+      persistStore(nextStore); encryptedStore = nextStore; event.returnValue = true;
+    } catch { event.returnValue = false; }
   });
   ipcMain.on("clinicnova:storage-remove", (event, key) => {
     event.returnValue = false;
     if (!rendererAllowed(event) || !validStorageKey(key)) return;
-    delete encryptedStore[key];
-    persistStore();
-    event.returnValue = true;
+    try {
+      const nextStore = { ...encryptedStore }; delete nextStore[key];
+      persistStore(nextStore); encryptedStore = nextStore; event.returnValue = true;
+    } catch { event.returnValue = false; }
   });
   ipcMain.on("clinicnova:mesh-get-config", event => {
     event.returnValue = rendererAllowed(event) ? readEncryptedValue("clinicnova.meshNativeConfig") : null;
@@ -79,20 +81,31 @@ function installIpcHandlers() {
   ipcMain.on("clinicnova:mesh-configure", (event, json) => {
     event.returnValue = false;
     if (!rendererAllowed(event) || typeof json !== "string" || Buffer.byteLength(json) > 8192 || !safeStorage.isEncryptionAvailable()) return;
+    const previousConfig = meshTransport.config ? { ...meshTransport.config, secret: meshTransport.config.secret.toString("base64") } : null;
     try {
       const config = JSON.parse(json); meshTransport.configure(config);
-      encryptedStore["clinicnova.meshNativeConfig"] = safeStorage.encryptString(json).toString("base64"); persistStore(); event.returnValue = true;
-    } catch { event.returnValue = false; }
+      const nextStore = { ...encryptedStore, "clinicnova.meshNativeConfig": safeStorage.encryptString(json).toString("base64") };
+      persistStore(nextStore); encryptedStore = nextStore; event.returnValue = true;
+    } catch {
+      try { if (previousConfig) meshTransport.configure(previousConfig); else meshTransport.stop(); } catch { meshTransport.stop(); }
+      event.returnValue = false;
+    }
   });
   ipcMain.on("clinicnova:mesh-publish", (event, envelope) => {
     event.returnValue = false;
     if (!rendererAllowed(event) || typeof envelope !== "string" || Buffer.byteLength(envelope) > 64 * 1024 * 1024 || !safeStorage.isEncryptionAvailable()) return;
-    encryptedStore["clinicnova.meshEnvelope"] = safeStorage.encryptString(envelope).toString("base64"); persistStore(); event.returnValue = true;
+    try {
+      const nextStore = { ...encryptedStore, "clinicnova.meshEnvelope": safeStorage.encryptString(envelope).toString("base64") };
+      persistStore(nextStore); encryptedStore = nextStore; event.returnValue = true;
+    } catch { event.returnValue = false; }
   });
   ipcMain.on("clinicnova:mesh-sync-now", event => { if (rendererAllowed(event)) meshTransport.syncNow(); });
   ipcMain.on("clinicnova:mesh-disable", event => {
-    event.returnValue = false; if (!rendererAllowed(event)) return; meshTransport.stop(); meshTransport.config = null;
-    delete encryptedStore["clinicnova.meshNativeConfig"]; delete encryptedStore["clinicnova.meshEnvelope"]; persistStore(); event.returnValue = true;
+    event.returnValue = false; if (!rendererAllowed(event)) return;
+    try {
+      const nextStore = { ...encryptedStore }; delete nextStore["clinicnova.meshNativeConfig"]; delete nextStore["clinicnova.meshEnvelope"];
+      persistStore(nextStore); encryptedStore = nextStore; meshTransport.stop(); meshTransport.config = null; event.returnValue = true;
+    } catch { event.returnValue = false; }
   });
   ipcMain.on("clinicnova:sync", async (event, serverUrl, batchJson) => {
     if (!rendererAllowed(event)) return;

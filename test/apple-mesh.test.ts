@@ -15,7 +15,7 @@ test("iOS is a real native local-first client, not the HTML preview", async () =
   assert.match(view, /ClinicNovaMeshEnvelope/);
   assert.match(view, /ClinicNovaMeshPersistenceFailure/);
   assert.match(view, /ClinicNovaStorageFailure/);
-  assert.match(view, /if !store\.write\("records"/);
+  assert.match(view, /writeLocalRecord\(key: key, value: stored\)/);
   assert.match(view, /meshGetConfig/);
   assert.match(transport, /_clinicnova\._tcp\./);
   assert.match(transport, /AES\.GCM/);

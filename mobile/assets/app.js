@@ -241,6 +241,9 @@
   function localAccount() {
     return storage.get("clinicnova.localAccount", null);
   }
+  function persistLocalAccount(account) {
+    return storage.set("clinicnova.localAccount", account);
+  }
   function currentClinicName() {
     return previewMode ? previewClinicName : localAccount()?.clinicName || "ClinicNova";
   }
@@ -263,12 +266,13 @@
   function statusLabel(status) {
     return ({ PLANNED: "Planlandı", ARRIVED: "Geldi", COMPLETED: "Tamamlandı", PENDING_CONFIRMATION: "Onay bekliyor", CANCELLED: "İptal edildi", NO_SHOW: "Gelmedi" })[status] || status;
   }
+  let localIdCounter = Number(storage.get("clinicnova.localIdCounter", 0)) || 0;
   function nextLocalId() {
     let deviceHash = 2166136261;
     for (const char of deviceId) deviceHash = Math.imul(deviceHash ^ char.charCodeAt(0), 16777619) >>> 0;
-    const counter = (Number(storage.get("clinicnova.localIdCounter", 0)) + 1) % 1_000_000 || 1;
-    storage.set("clinicnova.localIdCounter", counter);
-    return (deviceHash % 4_000_000_000) * 1_000_000 + counter;
+    localIdCounter = (localIdCounter + 1) % 1_000_000 || 1;
+    if (!storage.set("clinicnova.localIdCounter", localIdCounter)) warnPersistenceFailure();
+    return (deviceHash % 4_000_000_000) * 1_000_000 + localIdCounter;
   }
   function meshDocument() {
     const stockBases = stockItems.map((item) => {
@@ -625,7 +629,8 @@
 
   function paymentPayload(payment) {
     const method = String(payment.detail || "").split(" · ").pop() || "CARD";
-    return { patientId: payment.patientId ? String(payment.patientId) : undefined, type: payment.type === "expense" ? "EXPENSE" : "INCOME", status: payment.status || "PAID", amount: payment.amount, totalAmount: payment.totalAmount || payment.amount, remainingAmount: payment.type === "expense" ? 0 : outstandingAmount(payment), method, description: payment.detail, isDeposit: Boolean(payment.isDeposit), paidAt: payment.paidAt, dueDate: payment.dueDate, referralSource: payment.referralSource || "", discountAmount: payment.discountAmount || 0 };
+    const description = payment.type === "expense" ? [payment.name, payment.detail].filter(Boolean).join(" · ") : payment.detail;
+    return { patientId: payment.patientId ? String(payment.patientId) : undefined, type: payment.type === "expense" ? "EXPENSE" : "INCOME", status: payment.status || "PAID", amount: payment.amount, totalAmount: payment.totalAmount || payment.amount, remainingAmount: payment.type === "expense" ? 0 : outstandingAmount(payment), method, description, isDeposit: Boolean(payment.isDeposit), paidAt: payment.paidAt, dueDate: payment.dueDate, referralSource: payment.referralSource || "", discountAmount: payment.discountAmount || 0 };
   }
 
   function treatmentPayload(record) { return { patientId: String(record.patientId), doctor: record.doctor, toothNumber: record.tooth || "", treatmentType: record.treatment, description: record.description || "", fee: record.fee || 0, paymentPlan: record.paymentPlan || null, status: record.status || "COMPLETED", date: record.date || todayIso }; }
@@ -1569,7 +1574,10 @@
   function connectToServer(value) {
     try {
       const serverUrl = normalizedServerUrl(value);
-      storage.set("clinicnova.serverUrl", serverUrl);
+      if (!storage.set("clinicnova.serverUrl", serverUrl)) {
+        showToast("Sunucu adresi cihazda saklanamadı; bağlantı başlatılmadı.");
+        return false;
+      }
       showToast("Sunucu hesabı girişi açılıyor…");
       const platform = encodeURIComponent(mobileConfig.platform || "android");
       setTimeout(() => {
@@ -1705,7 +1713,8 @@
       clinicChairs = Array.isArray(snapshot.clinicConfig.chairs) ? snapshot.clinicConfig.chairs : clinicChairs;
       const account = localAccount() || {};
       if (snapshot.clinicConfig.clinicName) account.clinicName = snapshot.clinicConfig.clinicName;
-      storage.set("clinicnova.localAccount", account); applyLocalIdentity(account);
+      if (!persistLocalAccount(account)) showToast("Sunucudan gelen klinik ayarı cihazda saklanamadı.");
+      else applyLocalIdentity(account);
     }
     storage.set("clinicnova.lastPullAt", Date.now());
     saveData();
@@ -1841,7 +1850,7 @@
             passwordHash: await deriveLocalSecret(password, passwordSalt), recoverySalt,
             recoveryHash: await deriveLocalSecret(code.replaceAll("-", ""), recoverySalt), failures: 0, lockedUntil: 0, createdAt: Date.now()
           };
-          storage.set("clinicnova.localAccount", account);
+          if (!persistLocalAccount(account)) return showToast("Yerel hesap cihazda saklanamadı. Boş alanı ve cihaz kilidini kontrol edip yeniden deneyin.");
           showApp();
           openModal("HESAP KURTARMA", "Kurtarma kodunuzu kaydedin", `<div class="modal-grid"><p class="modal-note">Bu kod yalnızca şimdi gösterilir. Parolanızı unutursanız çevrimdışı hesabı bununla kurtarabilirsiniz.</p><p class="modal-note"><strong style="font-size:1.1rem;letter-spacing:.08em">${escapeHtml(code)}</strong></p><p class="modal-note">Kodu hasta bilgisinden ayrı ve güvenli bir yerde saklayın.</p><button class="button button-primary" data-close-modal>Anladım, kaydettim</button></div>`);
           showToast("Yerel yönetici hesabı oluşturuldu.");
@@ -1852,11 +1861,11 @@
         if (email !== account.email || !secureEqual(candidate, account.passwordHash)) {
           account.failures = Number(account.failures || 0) + 1;
           if (account.failures >= 5) { account.lockedUntil = Date.now() + 5 * 60_000; account.failures = 0; }
-          storage.set("clinicnova.localAccount", account);
+          if (!persistLocalAccount(account)) warnPersistenceFailure();
           return showToast("E-posta veya parola yanlış.");
         }
         account.failures = 0; account.lockedUntil = 0;
-        storage.set("clinicnova.localAccount", account);
+        if (!persistLocalAccount(account)) return showToast("Giriş durumu cihazda güvenle saklanamadı. Boş alanı ve cihaz kilidini kontrol edin.");
         showApp();
         showToast(navigator.onLine ? "Giriş başarılı. Sunucu bağlantısı varsa eşitleme başlatıldı." : "Çevrimdışı giriş başarılı.");
         setTimeout(() => syncPending(true), 200);
@@ -1945,7 +1954,7 @@
         if (payload.media?.length) state.patientMedia[payload.patient.id] = payload.media;
         queueCreate("PATIENT", payload.patient.id, patientPayload(payload.patient));
         restoredAppointments.records.forEach((item) => queueCreate("APPOINTMENT", item.id, appointmentPayload(item)));
-        payload.transactions.filter((item) => item.patientId).forEach((item) => queueCreate("PAYMENT", item.id, paymentPayload(item)));
+        payload.transactions.forEach((item) => queueCreate("PAYMENT", item.id, paymentPayload(item)));
         (payload.treatmentPlans || []).forEach((item) => queueCreate("TREATMENT_PLAN", item.id, treatmentPlanPayload(item)));
         restoredTreatments.records.forEach((item) => queueCreate("TREATMENT", item.id, treatmentPayload(item)));
         (payload.recalls || []).forEach((item) => queueCreate("RECALL", item.id, recallPayload(item)));
@@ -1962,7 +1971,7 @@
         }
         state.appointments.push(restored); queueCreate("APPOINTMENT", restored.id, appointmentPayload(restored));
       }
-      if (trashItem.kind === "transaction") { state.transactions.unshift(payload); if (payload.patientId) queueCreate("PAYMENT", payload.id, paymentPayload(payload)); }
+      if (trashItem.kind === "transaction") { state.transactions.unshift(payload); queueCreate("PAYMENT", payload.id, paymentPayload(payload)); }
       if (trashItem.kind === "treatmentHistory") {
         let restoredTreatment = payload.treatmentRecord ? JSON.parse(JSON.stringify(payload.treatmentRecord)) : null;
         if (restoredTreatment?.status === "COMPLETED") {
@@ -2301,24 +2310,24 @@
   });
 
   $("#patientSearch").addEventListener("input", (event) => { state.patientQuery = event.target.value; renderPatients(); });
-  document.addEventListener("change", (event) => {
+  document.addEventListener("change", async (event) => {
     const input = event.target.closest("[data-patient-media]");
     if (!input || !input.files?.[0]) return;
     const file = input.files[0];
     if (!file.type.startsWith("image/")) return showToast("Lütfen bir fotoğraf seçin.");
-    if (file.size > 3 * 1024 * 1024) return showToast("Fotoğraf en fazla 3 MB olabilir.");
     const patientId = Number(input.dataset.patientMedia);
-    const reader = new FileReader();
-    reader.onload = () => {
+    try {
+      const dataUrl = await imageFileData(file);
+      if (!patientById(patientId)) return showToast("Fotoğrafın ekleneceği hasta bulunamadı.");
       const items = state.patientMedia[patientId] || [];
-      items.unshift({ id: nextLocalId(), kind: input.dataset.mediaKind || "Fotoğraf", date: "Şimdi", dataUrl: reader.result });
+      items.unshift({ id: nextLocalId(), kind: input.dataset.mediaKind || "Fotoğraf", date: "Şimdi", dataUrl });
       state.patientMedia[patientId] = items.slice(0, 8);
       saveData();
       openPatientDetail(patientId);
       showToast(`${input.dataset.mediaKind || "Fotoğraf"} fotoğrafı eklendi.`);
-    };
-    reader.onerror = () => showToast("Fotoğraf okunamadı.");
-    reader.readAsDataURL(file);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Fotoğraf okunamadı.");
+    }
   });
   $("#modalClose").addEventListener("click", closeModal);
   $("#modalBackdrop").addEventListener("click", (event) => { if (event.target === event.currentTarget) closeModal(); });
@@ -2474,7 +2483,9 @@
       if (previewMode) {
         previewClinicName = name; applyLocalIdentity(); saveData(); openClinicManagement(); showToast("Klinik adı inceleme oturumu için güncellendi."); return;
       }
-      const account = localAccount() || {}; account.clinicName = name; storage.set("clinicnova.localAccount", account); applyLocalIdentity(account);
+      const account = localAccount() || {}; account.clinicName = name;
+      if (!persistLocalAccount(account)) return showToast("Klinik adı cihazda saklanamadı.");
+      applyLocalIdentity(account);
       queueUpdate("CLINIC_CONFIG", "clinic", clinicConfigPayload()); saveData(); openClinicManagement(); showToast("Klinik adı güncellendi."); return;
     }
     if (event.target.id === "recoveryForm") {
@@ -2493,7 +2504,7 @@
         account.recoverySalt = randomSecret();
         account.recoveryHash = await deriveLocalSecret(nextCode.replaceAll("-", ""), account.recoverySalt, account.iterations);
         account.failures = 0; account.lockedUntil = 0;
-        storage.set("clinicnova.localAccount", account);
+        if (!persistLocalAccount(account)) return showToast("Yeni parola cihazda saklanamadı. Eski parola ve kurtarma kodu geçerliliğini koruyor.");
         openModal("HESAP KURTARMA", "Parola yenilendi", `<div class="modal-grid"><p class="modal-note">Eski kurtarma kodu iptal edildi. Yeni kodunuzu güvenli bir yere kaydedin:</p><p class="modal-note"><strong style="font-size:1.1rem;letter-spacing:.08em">${escapeHtml(nextCode)}</strong></p><button class="button button-primary" data-close-modal>Kaydettim</button></div>`);
         showToast("Yerel parola yenilendi.");
       } catch (error) {

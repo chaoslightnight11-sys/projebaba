@@ -58,12 +58,15 @@ test("online synchronization is bounded, times out, and preserves malformed resp
 });
 
 test("offline persistence failures are surfaced and partial mesh setup is rolled back", async () => {
-  const mobile = await readFile("mobile/assets/app.js", "utf8");
+  const [mobile, desktop] = await Promise.all([readFile("mobile/assets/app.js", "utf8"), readFile("desktop/main.cjs", "utf8")]);
   assert.match(mobile, /return window\.ClinicNovaNative\.storage\.setItem\(key, serialized\) !== false/);
   assert.match(mobile, /Cihaz depolamasına yazılamadı/);
   assert.match(mobile, /if \(!persistMesh\(\)\) throw new Error/);
   assert.match(mobile, /configuredNative && !nativeConfigBefore/);
   assert.match(mobile, /meshConfig = previousConfig; meshEngine = previousEngine/);
+  assert.match(desktop, /const nextStore = \{ \.\.\.encryptedStore/);
+  assert.match(desktop, /persistStore\(nextStore\); encryptedStore = nextStore/);
+  assert.match(desktop, /previousConfig = meshTransport\.config \? \{ \.\.\.meshTransport\.config, secret: meshTransport\.config\.secret\.toString\("base64"\) \}/);
 });
 
 test("offline clinic login stores only a derived password and supports Android native PBKDF2", async () => {

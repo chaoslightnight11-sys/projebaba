@@ -65,10 +65,7 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
             guard let value = message.body as? [String: Any], let key = value["key"] as? String, let stored = value["value"] as? String,
                   key.range(of: "^clinicnova\\.[A-Za-z0-9._-]{1,80}$", options: .regularExpression) != nil,
                   stored.utf8.count <= 64 * 1024 * 1024 else { return }
-            localRecords[key] = stored
-            if let data = try? JSONEncoder().encode(localRecords), let text = String(data: data, encoding: .utf8) {
-                if !store.write("records", value: text) { notifyPersistenceFailure(mesh: false) }
-            } else { notifyPersistenceFailure(mesh: false) }
+            if !writeLocalRecord(key: key, value: stored) { notifyPersistenceFailure(mesh: false) }
         case "requestNotificationPermission":
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         case "showLocalNotification":
@@ -103,6 +100,18 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
         present(alert, animated: true)
     }
 
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        guard frame.isMainFrame, prompt == "__clinicnova_storage_set__", let text = defaultText,
+              text.utf8.count <= 64 * 1024 * 1024,
+              let data = text.data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let key = value["key"] as? String, let stored = value["value"] as? String else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(writeLocalRecord(key: key, value: stored) ? "ok" : nil)
+    }
+
     private func nativeBridgeScript() -> String {
         let config = jsonString(store.read("config"))
         let envelope = jsonString(store.read("envelope"))
@@ -114,7 +123,13 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
         window.ClinicNovaNative = Object.freeze({
           platform: "ios",
           storageGet: function(key){ return Object.prototype.hasOwnProperty.call(window.__clinicNovaIOSRecords,key) ? window.__clinicNovaIOSRecords[key] : null; },
-          storageSet: function(key,value){ window.__clinicNovaIOSRecords[key] = value; window.webkit.messageHandlers.storageSet.postMessage({key:key,value:value}); return true; },
+          storageSet: function(key,value){
+            var result = null;
+            try { result = window.prompt("__clinicnova_storage_set__", JSON.stringify({key:key,value:value})); } catch (_) { return false; }
+            if (result !== "ok") return false;
+            window.__clinicNovaIOSRecords[key] = value;
+            return true;
+          },
           meshGetConfig: function(){ return window.__clinicNovaIOSConfig || ""; },
           meshGetEnvelope: function(){ return window.__clinicNovaIOSEnvelope || ""; },
           meshConfigure: function(value){ window.__clinicNovaIOSConfig = value; window.webkit.messageHandlers.meshConfigure.postMessage(value); return true; },
@@ -140,6 +155,17 @@ final class ViewController: UIViewController, WKScriptMessageHandler, WKNavigati
     private func notifyPersistenceFailure(mesh: Bool) {
         let function = mesh ? "ClinicNovaMeshPersistenceFailure" : "ClinicNovaStorageFailure"
         DispatchQueue.main.async { [weak self] in self?.webView?.evaluateJavaScript("window.\(function) && window.\(function)()") }
+    }
+
+    private func writeLocalRecord(key: String, value: String) -> Bool {
+        guard key.range(of: "^clinicnova\\.[A-Za-z0-9._-]{1,80}$", options: .regularExpression) != nil,
+              value.utf8.count <= 64 * 1024 * 1024 else { return false }
+        var next = localRecords
+        next[key] = value
+        guard let data = try? JSONEncoder().encode(next), let text = String(data: data, encoding: .utf8),
+              store.write("records", value: text) else { return false }
+        localRecords = next
+        return true
     }
 
     private func jsonString(_ value: String) -> String {
