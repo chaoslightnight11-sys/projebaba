@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { redirectWithMessage } from "@/lib/redirect-url";
 import { writeAuditLog } from "@/lib/services/auditLogService";
 import { allowServerAction } from "@/lib/server-action-rate-limit";
-import { digitalConsentSignSchema } from "@/lib/validations/tourism";
+import { digitalConsentSignSchema } from "@/lib/validations/digital-consent";
 import { formatDateTime } from "@/lib/utils";
 
 async function signConsentAction(formData: FormData) {
@@ -46,7 +46,7 @@ async function signConsentAction(formData: FormData) {
       data: { status: "SIGNED", signedAt: new Date() }
     });
   }
-  await writeAuditLog({ action: "SIGN_DIGITAL_CONSENT", module: "tourism-consents", entityId: consent.id, metadata: { signerName: parsed.data.signerName }, organizationId: consent.organizationId, branchId: consent.branchId });
+  await writeAuditLog({ action: "SIGN_DIGITAL_CONSENT", module: "consents", entityId: consent.id, metadata: { signerName: parsed.data.signerName }, organizationId: consent.organizationId, branchId: consent.branchId });
   redirect(redirectWithMessage(`/consent/${parsed.data.token}`, "success", "Onam imzalandı ve zaman damgası kaydedildi."));
 }
 

@@ -9,7 +9,6 @@ import {
   HeartPulse,
   LayoutDashboard,
   MessageSquare,
-  Plane,
   Settings,
   Stethoscope,
   Users,
@@ -40,7 +39,6 @@ export const dashboardNavigation: DashboardNavigationItem[] = [
   { href: "/dashboard/consents", key: "consents", permission: "consents", icon: ClipboardCheck },
   { href: "/dashboard/surveys", key: "surveys", permission: "surveys", icon: HeartPulse },
   { href: "/dashboard/communication", key: "communication", permission: "communication", icon: MessageSquare },
-  { href: "/dashboard/tourism", key: "tourism", permission: "tourism", icon: Plane },
   { href: "/dashboard/recalls", key: "recalls", permission: "recalls", icon: BellRing },
   { href: "/dashboard/reports", key: "reports", permission: "reports", icon: BarChart3 },
   { href: "/dashboard/settings", key: "settings", permission: "settings", icon: Settings }

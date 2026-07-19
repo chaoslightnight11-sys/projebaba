@@ -6,7 +6,7 @@ const currentVersion = JSON.parse(readFileSync("package.json", "utf8")).version 
 test("public experience is responsive and sends security headers", async ({ page }, testInfo) => {
   const response = await page.goto("/");
   expect(response?.status()).toBe(200);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Lead’den tedaviye");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Hasta kaydından tedaviye");
   await expect(page.getByRole("link", { name: "Gizlilik" })).toBeVisible();
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
 
@@ -55,13 +55,14 @@ test("staff login never exposes validation or internal error details", async ({ 
   expect(await invalid.json()).toEqual({ error: "Giriş bilgileri geçersiz." });
 });
 
-test("a public package can be accepted only once", async ({ page }, testInfo) => {
-  const token = testInfo.project.name === "android-chrome" ? "pkg-demo-5" : "pkg-demo-1";
-  await page.goto(`/package/${token}`);
-  await expect(page.getByRole("button", { name: /Paketi Kabul Ediyorum|I Accept This Package/ })).toBeVisible();
-  await page.getByRole("button", { name: /Paketi Kabul Ediyorum|I Accept This Package/ }).click();
-  await expect(page.getByText(/Paket kabul edildi|This package has been accepted/).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Paketi Kabul Ediyorum|I Accept This Package/ })).toHaveCount(0);
+test("health tourism pages and external entrypoints are removed", async ({ page }) => {
+  for (const path of ["/package/pkg-demo-1", "/survey/pkg-demo-1", "/care-check/demo", "/api/cron/followups", "/api/webhooks/n8n/leads", "/api/webhooks/n8n/reservation-share"]) {
+    expect((await page.request.get(path)).status(), path).toBe(404);
+  }
+  await page.goto("/demo-open");
+  expect((await page.request.get("/dashboard/tourism")).status()).toBe(404);
+  await page.goto("/dashboard");
+  await expect(page.getByRole("link", { name: /Sağlık Turizmi|Health Tourism/ })).toHaveCount(0);
 });
 
 test("demo can open without a live database", async ({ page }) => {
@@ -70,7 +71,7 @@ test("demo can open without a live database", async ({ page }) => {
   await page.getByRole("link", { name: "Demo olarak incele" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Klinik dashboard" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Gelir fırsatları hazır" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Geciken tahsilatlar" })).toBeVisible();
 });
 
 test("sales workflows expose full calendar, treatment details, stock purchasing and deposits", async ({ page }) => {
@@ -252,20 +253,7 @@ const primaryDashboardRoutes = [
   "/dashboard/communication",
   "/dashboard/recalls",
   "/dashboard/reports",
-  "/dashboard/settings",
-  "/dashboard/tourism",
-  "/dashboard/tourism/leads",
-  "/dashboard/tourism/package-builder",
-  "/dashboard/tourism/hotel-transfer",
-  "/dashboard/tourism/followups",
-  "/dashboard/tourism/post-treatment",
-  "/dashboard/tourism/reviews",
-  "/dashboard/tourism/gallery",
-  "/dashboard/tourism/consents",
-  "/dashboard/tourism/surveys",
-  "/dashboard/tourism/chatbot",
-  "/dashboard/tourism/analytics",
-  "/dashboard/tourism/integrations"
+  "/dashboard/settings"
 ];
 
 test("all primary application modules render without runtime errors or horizontal overflow", async ({ page }, testInfo) => {
@@ -289,7 +277,7 @@ test("all primary application modules render without runtime errors or horizonta
     const overflow = await page.evaluate(() => ({
       pageWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
-      layout: Array.from(document.querySelectorAll("body, body > div, header, main, main > div, nav[aria-label='Sağlık turizmi modülleri']"))
+      layout: Array.from(document.querySelectorAll("body, body > div, header, main, main > div"))
         .map((element) => {
           const rect = element.getBoundingClientRect();
           return {
@@ -373,7 +361,7 @@ test("staff can sign in, use the dashboard and sign out", async ({ page }, testI
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Klinik dashboard" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Aylık gelir", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Gelir fırsatları hazır" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Geciken tahsilatlar" })).toBeVisible();
 
   if (testInfo.project.name === "android-chrome") {
     await page.getByRole("button", { name: "Menü" }).click();
@@ -381,13 +369,10 @@ test("staff can sign in, use the dashboard and sign out", async ({ page }, testI
     await page.getByRole("button", { name: "Kapat", exact: true }).click();
   }
 
-  await page.getByRole("link", { name: /sıcak lead/ }).click();
-  await expect(page).toHaveURL(/\/dashboard\/tourism\/leads$/);
-  await expect(page.getByRole("heading", { name: "Lead Havuzu" })).toBeVisible();
-
   await page.goto("/dashboard");
+  await expect(page.getByRole("link", { name: /Sağlık Turizmi|Health Tourism/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Bildirimler" }).click();
-  await expect(page.getByRole("link", { name: /Yeni sıcak lead/ })).toHaveCount(0);
+  await expect(page.getByText(/lead|paket kabul/i)).toHaveCount(0);
 
   await page.goto("/dashboard");
   const dashboardOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     default: "ClinicNova | Dental Growth OS",
     template: "%s | ClinicNova"
   },
-  description: "Diş klinikleri için lead, hasta, randevu, tedavi, tahsilat ve sağlık turizmi operasyonlarını tek akışta yöneten platform.",
+  description: "Diş klinikleri için hasta, randevu, tedavi, tahsilat, stok ve ekip operasyonlarını tek akışta yöneten platform.",
   applicationName: "ClinicNova",
   manifest: "/manifest.webmanifest",
   appleWebApp: {

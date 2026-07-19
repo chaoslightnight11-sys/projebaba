@@ -1,4 +1,4 @@
-import { ArrowUpRight, CalendarPlus, CircleDollarSign, Clock, CreditCard, MessageSquare, Plane, Sparkles, Stethoscope, UserPlus, Users, WalletCards } from "lucide-react";
+import { ArrowUpRight, CalendarPlus, CircleDollarSign, Clock, CreditCard, MessageSquare, Sparkles, Stethoscope, UserPlus, Users, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -61,18 +61,13 @@ export default async function DashboardPage() {
               <ArrowUpRight className="h-5 w-5" />
             </span>
             <div>
-              <h2 id="revenue-opportunities-title" className="text-lg font-semibold">Gelir fırsatları hazır</h2>
+              <h2 id="revenue-opportunities-title" className="text-lg font-semibold">Geciken tahsilatlar</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                {metrics.hotLeadCount} sıcak lead ve {metrics.overduePaymentCount} geciken tahsilat bugün aksiyon bekliyor.
+                {metrics.overduePaymentCount} geciken tahsilat bugün aksiyon bekliyor.
               </p>
             </div>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Link href="/dashboard/tourism/leads" className="group flex min-h-16 items-center gap-3 rounded-lg border bg-background/85 p-3 transition hover:border-primary/40 hover:bg-background">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300"><Plane className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1"><strong className="block text-sm">{metrics.hotLeadCount} sıcak lead</strong><small className="text-xs text-muted-foreground">Lead havuzunu aç</small></span>
-              <ArrowUpRight className="h-4 w-4 text-muted-foreground transition group-hover:text-primary" />
-            </Link>
+          <div>
             <Link href="/dashboard/payments" className="group flex min-h-16 items-center gap-3 rounded-lg border bg-background/85 p-3 transition hover:border-primary/40 hover:bg-background">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><CircleDollarSign className="h-4 w-4" /></span>
               <span className="min-w-0 flex-1"><strong className="block text-sm">{metrics.overduePaymentCount} geciken tahsilat</strong><small className="text-xs text-muted-foreground">Tahsilatları aç</small></span>

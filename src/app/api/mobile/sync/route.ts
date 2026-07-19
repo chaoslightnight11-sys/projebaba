@@ -22,11 +22,10 @@ export async function POST(request: Request) {
       if (["SURVEY", "SURVEY_RESPONSE"].includes(entityType)) return "surveys";
       if (entityType === "COMMUNICATION") return "communication";
       if (entityType === "RECALL") return "recalls";
-      if (entityType === "LEAD") return "tourism";
       return "settings";
     };
-    const allowed = batch.operations.filter((item) => canAccess(session.role, moduleForEntity(item.entityType)));
-    const denied = batch.operations.filter((item) => !canAccess(session.role, moduleForEntity(item.entityType))).map((item) => ({ operationId: item.operationId, status: "failed" as const, error: "Bu modülü eşitleme yetkiniz yok." }));
+    const allowed = batch.operations.filter((item) => item.entityType !== "LEAD" && canAccess(session.role, moduleForEntity(item.entityType)));
+    const denied = batch.operations.filter((item) => item.entityType === "LEAD" || !canAccess(session.role, moduleForEntity(item.entityType))).map((item) => ({ operationId: item.operationId, status: "failed" as const, error: item.entityType === "LEAD" ? "Sağlık turizmi modülü kaldırıldı." : "Bu modülü eşitleme yetkiniz yok." }));
     const results = [...await syncMobileOperations(session, { ...batch, operations: allowed }), ...denied];
     const synced = results.filter((item) => item.status === "synced").length;
     const snapshot = await getMobileSnapshot(session, batch.deviceId);

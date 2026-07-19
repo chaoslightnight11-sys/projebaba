@@ -15,11 +15,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     prisma.notification.findMany({
       where: { organizationId: session.organizationId, OR: [{ userId: null }, { userId: session.userId }] },
       orderBy: { createdAt: "desc" },
-      take: 8
+      take: 20
     })
   ]);
 
-  const bellNotifications = notifications.map((notification) => ({
+  const bellNotifications = notifications.filter((notification) => !notification.actionUrl?.startsWith("/dashboard/tourism")).slice(0, 8).map((notification) => ({
     id: notification.id,
     title: notification.title,
     message: notification.message,

@@ -1,4 +1,4 @@
-import { AppointmentStatus, CommunicationChannel, CommunicationStatus, PatientTag, PaymentStatus, PaymentType, RecallStatus, Role, TourismLeadStatus } from "@prisma/client";
+import { AppointmentStatus, CommunicationChannel, CommunicationStatus, PatientTag, PaymentStatus, PaymentType, RecallStatus, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toNumber } from "@/lib/utils";
 
@@ -37,7 +37,6 @@ export async function getDashboardMetrics(organizationId: string) {
     weeklyAppointments,
     monthlyPayments,
     pendingPayments,
-    hotLeadCount,
     overduePaymentCount,
     activePatientCount,
     newPatientCount,
@@ -64,15 +63,6 @@ export async function getDashboardMetrics(organizationId: string) {
     prisma.payment.aggregate({
       where: { organizationId, type: PaymentType.INCOME, status: PaymentStatus.PENDING },
       _sum: { amount: true }
-    }),
-    prisma.lead.count({
-      where: {
-        organizationId,
-        leadScore: { gte: 70 },
-        leadStatus: {
-          in: [TourismLeadStatus.NEW, TourismLeadStatus.CONTACTED, TourismLeadStatus.WAITING_REPLY, TourismLeadStatus.QUALIFIED, TourismLeadStatus.PACKAGE_SENT]
-        }
-      }
     }),
     prisma.payment.count({
       where: { organizationId, type: PaymentType.INCOME, status: PaymentStatus.PENDING, dueDate: { lt: todayStart } }
@@ -190,7 +180,6 @@ export async function getDashboardMetrics(organizationId: string) {
     weeklyAppointments,
     monthlyRevenue,
     pendingAmount,
-    hotLeadCount,
     overduePaymentCount,
     activePatientCount,
     newPatientCount,

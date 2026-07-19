@@ -24,7 +24,6 @@ export const dashboardNavLabels: Record<Locale, Record<string, string>> = {
     consents: "Onamlar",
     surveys: "Anketler",
     communication: "İletişim",
-    tourism: "Sağlık Turizmi",
     recalls: "Takipler",
     reports: "Raporlar",
     settings: "Ayarlar"
@@ -41,7 +40,6 @@ export const dashboardNavLabels: Record<Locale, Record<string, string>> = {
     consents: "Consents",
     surveys: "Surveys",
     communication: "Communication",
-    tourism: "Health Tourism",
     recalls: "Recalls",
     reports: "Reports",
     settings: "Settings"

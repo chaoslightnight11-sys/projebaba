@@ -47,7 +47,7 @@ test("a failed mobile update keeps one local record instead of adding its server
     const callback = (window as typeof window & { ClinicNovaSyncResult: (status: number, body: string) => void }).ClinicNovaSyncResult;
     callback(200, JSON.stringify({
       results: [{ operationId: "operation-failed-update", status: "failed", error: "Geçici çakışma" }], synced: 0, failed: 1,
-      snapshot: { permissions: { patients: true }, patients: [{ id: 999, serverId: "server-patient-1", name: "Sunucu Kopyası", phone: "+90 555 000 00 00", email: "", tag: "ACTIVE", color: 1 }], appointments: [], transactions: [], treatmentPlans: [], stockItems: [], stockRecipes: [], doctors: [], treatments: [], staff: [], consents: [], surveys: [], surveyResponses: [], communication: [], recalls: [], leads: [], clinicConfig: { clinicName: "Test Klinik", chairs: [] } }
+      snapshot: { permissions: { patients: true }, patients: [{ id: 999, serverId: "server-patient-1", name: "Sunucu Kopyası", phone: "+90 555 000 00 00", email: "", tag: "ACTIVE", color: 1 }], appointments: [], transactions: [], treatmentPlans: [], stockItems: [], stockRecipes: [], doctors: [], treatments: [], staff: [], consents: [], surveys: [], surveyResponses: [], communication: [], recalls: [], clinicConfig: { clinicName: "Test Klinik", chairs: [] } }
     }));
   });
   const storedPatients = await page.evaluate(() => {
@@ -169,7 +169,7 @@ test("offline storage failures warn staff instead of silently claiming durabilit
 test("production account creation stops when secure storage rejects the write", async ({ page }) => {
   await page.addInitScript(() => {
     Object.assign(window, {
-      CLINICNOVA_MOBILE_CONFIG: { mode: "production", platform: "ios", platformLabel: "iOS", appVersion: "1.15.5", serverUrl: "" },
+      CLINICNOVA_MOBILE_CONFIG: { mode: "production", platform: "ios", platformLabel: "iOS", appVersion: "1.15.6", serverUrl: "" },
       ClinicNovaNative: { storageGet: () => null, storageSet: () => false }
     });
   });
@@ -258,10 +258,7 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Demo girişi" }).click();
   await expect(page.getByRole("heading", { name: /Günaydın/ })).toBeVisible();
 
-  await page.getByRole("button", { name: /Gelir fırsatları hazır/ }).click();
-  await expect(page.getByRole("heading", { name: "Bugünkü fırsatlar" })).toBeVisible();
-  await expect(page.getByText("John Smith", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geciken tahsilatları aç" }).click();
+  await page.getByRole("button", { name: /Geciken tahsilatlar/ }).click();
   await expect(page.getByRole("heading", { name: "Tahsilat merkezi" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Gecikenler" })).toBeVisible();
   await expect(page.locator("#transactionList").getByText("Can Şahin", { exact: true })).toBeVisible();
@@ -330,29 +327,8 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Tuna Akın hastasını sil" }).click();
   await expect(page.locator("#patientList").getByText("Tuna Akın", { exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Ana Sayfa", exact: true }).click();
-  await page.getByRole("button", { name: "Bildirimler" }).click();
-  await page.getByRole("button", { name: /Yeni sağlık turizmi lead/ }).click();
-  await expect(page.getByRole("heading", { name: "Bugünkü fırsatlar" })).toBeVisible();
-
-  await page.getByRole("button", { name: "Kapat", exact: true }).click();
-
   await page.getByRole("button", { name: "Diğer", exact: true }).click();
-  await page.locator("#moduleGrid").getByRole("button", { name: /Sağlık turizmi/ }).click();
-  await page.getByRole("button", { name: "Yeni lead ekle" }).click();
-  await page.locator('#leadForm input[name="name"]').fill("Anna Müller");
-  await page.locator('#leadForm input[name="country"]').fill("Almanya");
-  await page.locator('#leadForm input[name="phone"]').fill("+49 555 1234567");
-  await page.locator('#leadForm input[name="treatment"]').fill("İmplant");
-  await page.locator('#leadForm input[name="score"]').fill("91");
-  await page.getByRole("button", { name: "Lead’i kaydet" }).click();
-  await expect(page.getByText("Anna Müller", { exact: true })).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Anna Müller lead kaydını sil" }).click();
-  await expect(page.getByText("Anna Müller", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Kapat", exact: true }).click();
-
-  await page.getByRole("button", { name: "Diğer", exact: true }).click();
+  await expect(page.locator("#moduleGrid").getByRole("button", { name: /Sağlık turizmi/ })).toHaveCount(0);
   await page.locator("#moduleGrid").getByRole("button", { name: /İletişim/ }).click();
   await page.getByRole("button", { name: "İletişim kaydı ekle" }).click();
   await page.locator('#communicationForm input[name="patient"]').fill("Tuna Akın");
@@ -447,8 +423,7 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: "Diğer", exact: true }).click();
   await expect(page.getByRole("button", { name: "Diğer", exact: true })).toHaveAttribute("aria-current", "page");
   const moduleCases: Array<[string, string, string | null]> = [
-    ["Sağlık turizmi", "John Smith", "John Smith lead kaydını sil"],
-    ["İletişim", "Demo taslak", "Emily Carter iletişim kaydını sil"],
+    ["İletişim", "Demo taslak", "Zeynep Çelik iletişim kaydını sil"],
     ["Raporlar", "Net akış", null]
   ];
   for (const [module, expected, deleteName] of moduleCases) {
@@ -485,12 +460,6 @@ test("bundled Android interface works offline", async ({ page }) => {
   await page.getByRole("button", { name: /^Çöp Kutusu/ }).click();
   await expect(page.getByRole("heading", { name: "Çöp Kutusu" })).toBeVisible();
   await expect(page.getByText("30 gün kaldı").first()).toBeVisible();
-  const trashedLead = page.locator(".trash-record").filter({ hasText: "John Smith" });
-  await trashedLead.getByRole("button", { name: "Geri yükle" }).click();
-  await expect(page.locator(".trash-record").filter({ hasText: "John Smith" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: /^Sağlık turizmi/ }).click();
-  await expect(page.getByText("John Smith", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);

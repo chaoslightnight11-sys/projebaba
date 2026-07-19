@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { AppointmentStatus, CommunicationChannel, CommunicationDirection, CommunicationStatus, ConsentStatus, PaymentMethod, PaymentStatus, PaymentType, Prisma, RecallStatus, Role, StockMovementType, TourismLeadSourceChannel, TourismLeadStatus, TreatmentStatus } from "@prisma/client";
+import { AppointmentStatus, CommunicationChannel, CommunicationDirection, CommunicationStatus, ConsentStatus, PaymentMethod, PaymentStatus, PaymentType, Prisma, RecallStatus, Role, StockMovementType, TreatmentStatus } from "@prisma/client";
 import { z } from "zod";
 import type { AuthSession } from "@/lib/auth";
 import { hashPassword } from "@/lib/auth";
@@ -118,15 +118,6 @@ const recallPayload = z.object({
   patientId: z.union([z.string(), z.number()]).transform(String), reason: z.string().trim().min(2).max(500),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), status: z.enum(["OPEN", "CONTACTED", "SCHEDULED", "CLOSED"]), notes: z.string().trim().max(2000).optional()
 });
-const leadPayload = z.object({
-  fullName: z.string().trim().min(2).max(160), phone: z.string().trim().max(40).optional(), email: z.string().email().or(z.literal("")).optional(),
-  country: z.string().trim().min(2).max(120), city: z.string().trim().max(120).optional(), language: z.string().trim().max(20).default("EN"),
-  interestedTreatment: z.string().trim().min(2).max(200), estimatedBudget: z.string().trim().max(120).optional(),
-  message: z.string().trim().min(3).max(4000), sourceChannel: z.enum(["WEB_FORM", "WHATSAPP", "INSTAGRAM_DM", "MANUAL", "N8N_WEBHOOK", "AIRTABLE"]).default("MANUAL"),
-  leadStatus: z.enum(["NEW", "CONTACTED", "QUALIFIED", "PACKAGE_SENT", "BOOKED", "COMPLETED", "LOST"]).default("NEW"),
-  leadScore: z.coerce.number().int().min(0).max(100).default(50), gdprConsent: z.boolean().default(false), notes: z.string().trim().max(2000).optional()
-});
-
 type SyncResult = { operationId: string; status: "synced" | "failed"; serverEntityId?: string; error?: string };
 
 function payloadHash(operation: MobileSyncOperation) {
@@ -406,18 +397,6 @@ async function applyOperation(tx: Prisma.TransactionClient, session: AuthSession
     return (await tx.recall.create({ data })).id;
   }
 
-  if (operation.entityType === "LEAD") {
-    const existingId = await mappedEntityId(tx, organizationId, deviceId, "LEAD", operation.clientId);
-    if (operation.action === "DELETE") { if (existingId) await tx.lead.deleteMany({ where: { id: existingId, organizationId, branchId } }); return existingId; }
-    const payload = leadPayload.parse(operation.payload);
-    const data = { fullName: payload.fullName, phone: payload.phone || null, email: payload.email || null, country: payload.country, city: payload.city || null,
-      language: payload.language, interestedTreatment: payload.interestedTreatment, estimatedBudget: payload.estimatedBudget || null, message: payload.message,
-      sourceChannel: payload.sourceChannel as TourismLeadSourceChannel, leadStatus: payload.leadStatus as TourismLeadStatus,
-      leadScore: payload.leadScore, gdprConsent: payload.gdprConsent, notes: payload.notes || null, organizationId, branchId };
-    if (existingId && (await tx.lead.updateMany({ where: { id: existingId, organizationId, branchId }, data })).count) return existingId;
-    return (await tx.lead.create({ data })).id;
-  }
-
   if (operation.entityType === "STOCK_ITEM") {
     const existingId = await mappedEntityId(tx, organizationId, deviceId, "STOCK_ITEM", operation.clientId);
     if (operation.action === "DELETE") {
@@ -564,7 +543,7 @@ export async function getMobileSnapshot(session: AuthSession, deviceId: string) 
   const organizationId = session.organizationId;
   const branch = session.branchId ? { branchId: session.branchId } : {};
   const includePatients = canAccess(session.role, "patients");
-  const [patients, appointments, payments, plans, stocks, recipes, doctors, organization, treatments, staff, consents, surveys, surveyResponses, communication, recalls, leads] = await Promise.all([
+  const [patients, appointments, payments, plans, stocks, recipes, doctors, organization, treatments, staff, consents, surveys, surveyResponses, communication, recalls] = await Promise.all([
     includePatients ? prisma.patient.findMany({
       where: { organizationId, deletedAt: null, ...branch }, orderBy: { updatedAt: "desc" }, take: 2000,
       select: { id: true, firstName: true, lastName: true, phone: true, email: true, tag: true, notes: true, nationalId: true, birthDate: true, gender: true, address: true, allergies: true, chronicDiseases: true, medications: true, updatedAt: true }
@@ -594,8 +573,7 @@ export async function getMobileSnapshot(session: AuthSession, deviceId: string) 
     canAccess(session.role, "surveys") ? prisma.survey.findMany({ where: { organizationId, ...branch }, orderBy: { updatedAt: "desc" }, take: 2000 }) : [],
     canAccess(session.role, "surveys") ? prisma.surveyResponse.findMany({ where: { organizationId, ...branch }, include: { patient: { select: { id: true, firstName: true, lastName: true } }, survey: { select: { id: true, title: true } } }, orderBy: { updatedAt: "desc" }, take: 2000 }) : [],
     canAccess(session.role, "communication") ? prisma.communicationLog.findMany({ where: { organizationId, ...branch }, include: { patient: { select: { id: true, firstName: true, lastName: true } } }, orderBy: { updatedAt: "desc" }, take: 2000 }) : [],
-    canAccess(session.role, "recalls") ? prisma.recall.findMany({ where: { organizationId, ...branch }, include: { patient: { select: { id: true, firstName: true, lastName: true } } }, orderBy: { updatedAt: "desc" }, take: 2000 }) : [],
-    canAccess(session.role, "tourism") ? prisma.lead.findMany({ where: { organizationId, ...(session.branchId ? { OR: [{ branchId: session.branchId }, { branchId: null }] } : {}) }, orderBy: { updatedAt: "desc" }, take: 2000 }) : []
+    canAccess(session.role, "recalls") ? prisma.recall.findMany({ where: { organizationId, ...branch }, include: { patient: { select: { id: true, firstName: true, lastName: true } } }, orderBy: { updatedAt: "desc" }, take: 2000 }) : []
   ]);
   const snapshotMappings = [
     ...patients.map((item) => ["PATIENT", item.id]),
@@ -612,8 +590,7 @@ export async function getMobileSnapshot(session: AuthSession, deviceId: string) 
     ...surveys.map((item) => ["SURVEY", item.id]),
     ...surveyResponses.map((item) => ["SURVEY_RESPONSE", item.id]),
     ...communication.map((item) => ["COMMUNICATION", item.id]),
-    ...recalls.map((item) => ["RECALL", item.id]),
-    ...leads.map((item) => ["LEAD", item.id])
+    ...recalls.map((item) => ["RECALL", item.id])
   ].map(([entityType, serverEntityId]) => {
     const operationId = `snapshot:${entityType}:${serverEntityId}`;
     return {
@@ -626,7 +603,7 @@ export async function getMobileSnapshot(session: AuthSession, deviceId: string) 
 
   return {
     generatedAt: new Date().toISOString(),
-    permissions: Object.fromEntries((["patients", "appointments", "finance", "treatments", "stocks", "staff", "consents", "surveys", "communication", "tourism", "recalls", "reports", "settings"] as const).map((module) => [module, canAccess(session.role, module)])),
+    permissions: Object.fromEntries((["patients", "appointments", "finance", "treatments", "stocks", "staff", "consents", "surveys", "communication", "recalls", "reports", "settings"] as const).map((module) => [module, canAccess(session.role, module)])),
     patients: patients.map((patient, index) => ({
       id: localSnapshotId("PATIENT", patient.id), serverId: patient.id, name: `${patient.firstName} ${patient.lastName}`.trim(), phone: patient.phone,
       email: patient.email ?? "", tag: patient.tag, lastVisit: "Sunucuyla eşitlendi", treatment: "", note: patient.notes ?? "", color: index % 5,
@@ -684,7 +661,6 @@ export async function getMobileSnapshot(session: AuthSession, deviceId: string) 
     surveyResponses: surveyResponses.map((item) => ({ id: localSnapshotId("SURVEY_RESPONSE", item.id), serverId: item.id, surveyId: localSnapshotId("SURVEY", item.surveyId), patientId: localSnapshotId("PATIENT", item.patientId), patient: `${item.patient.firstName} ${item.patient.lastName}`.trim(), survey: item.survey.title, score: item.score, comment: item.comment ?? "", date: item.submittedAt?.toISOString() ?? item.createdAt.toISOString() })),
     communication: communication.map((item) => ({ id: localSnapshotId("COMMUNICATION", item.id), serverId: item.id, patientId: item.patientId ? localSnapshotId("PATIENT", item.patientId) : null, patient: item.patient ? `${item.patient.firstName} ${item.patient.lastName}`.trim() : item.contactName ?? "Genel", channel: item.channel, direction: item.direction, subject: item.subject ?? "", source: item.source ?? "", contactValue: item.contactValue ?? "", message: item.message, status: item.status, date: item.createdAt.toISOString() })),
     recalls: recalls.map((item) => ({ id: localSnapshotId("RECALL", item.id), serverId: item.id, patientId: localSnapshotId("PATIENT", item.patientId), patient: `${item.patient.firstName} ${item.patient.lastName}`.trim(), reason: item.reason, dueDate: istanbulParts(item.dueDate).date, status: item.status, notes: item.notes ?? "" })),
-    leads: leads.map((item) => ({ id: localSnapshotId("LEAD", item.id), serverId: item.id, name: item.fullName, phone: item.phone ?? "", email: item.email ?? "", country: item.country, city: item.city ?? "", language: item.language, treatment: item.interestedTreatment, budget: item.estimatedBudget ?? "", message: item.message, sourceChannel: item.sourceChannel, status: item.leadStatus, score: item.leadScore, gdprConsent: item.gdprConsent, notes: item.notes ?? "" })),
     clinicConfig: { clinicName: organization?.name ?? "ClinicNova", chairs: Array.isArray((organization?.clinicSettings as { chairs?: unknown[] } | null)?.chairs) ? (organization?.clinicSettings as { chairs: unknown[] }).chairs.filter((item): item is string => typeof item === "string") : [] }
   };
 }

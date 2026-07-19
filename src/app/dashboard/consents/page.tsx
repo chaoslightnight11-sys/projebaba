@@ -108,7 +108,6 @@ async function sendConsentAction(id: string) {
     prisma.digitalConsent.update({ where: { id: digitalConsent.id }, data: { status: DigitalConsentStatus.SENT } })
   ]);
   revalidatePath("/dashboard/consents");
-  revalidatePath("/dashboard/tourism/consents");
   redirect(resultUrl("success", "Tekil onam bağlantısı hastaya teslim edildi."));
 }
 

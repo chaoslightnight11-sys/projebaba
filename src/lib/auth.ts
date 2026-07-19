@@ -141,10 +141,6 @@ export async function requireModuleAccess(module: ModuleKey) {
   return session;
 }
 
-export async function requireTourismAccess() {
-  return requireModuleAccess("tourism");
-}
-
 export function canManageTrash(role: Role) {
   return role === Role.CLINIC_OWNER || role === Role.MANAGER;
 }
